@@ -1,0 +1,1071 @@
+<title>Sagittarius A*</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500&display=swap');
+
+:root{
+  --void:#05060a;
+  --void-2:#0a0d16;
+  --panel:#0d1220;
+  --panel-line:#1c2438;
+  --star:#eef1fb;
+  --star-dim:#8891ab;
+  --text:#c9cfe3;
+  --text-dim:#6b7391;
+  --accent:#ffb15e;
+  --accent-hot:#ff6a3d;
+  --accent-cool:#5ec9d8;
+  --arm-glow:#7c6bd8;
+}
+
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:var(--void);
+  color:var(--text);
+  font-family:'Inter',system-ui,sans-serif;
+  overflow:hidden;
+  height:100vh;
+  width:100vw;
+  position:relative;
+}
+
+.stage{
+  position:absolute;
+  inset:0;
+}
+
+canvas{
+  display:block;
+  width:100%;
+  height:100%;
+  cursor:grab;
+}
+canvas.grabbing{cursor:grabbing;}
+
+/* ---------- HUD chrome ---------- */
+.hud{
+  position:absolute;
+  z-index:5;
+  pointer-events:none;
+}
+.hud > *{pointer-events:auto;}
+
+.topbar{
+  top:0; left:0; right:0;
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  padding:22px 28px 0;
+  gap:24px;
+}
+
+.title-block{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+}
+.eyebrow{
+  font-family:'JetBrains Mono',monospace;
+  font-size:10.5px;
+  letter-spacing:.16em;
+  text-transform:uppercase;
+  color:var(--accent-cool);
+  opacity:.85;
+}
+h1{
+  margin:0;
+  font-family:'Space Grotesk',sans-serif;
+  font-weight:600;
+  font-size:26px;
+  letter-spacing:.01em;
+  color:var(--star);
+  text-wrap:balance;
+}
+.subtitle{
+  font-size:12.5px;
+  color:var(--text-dim);
+  font-family:'JetBrains Mono',monospace;
+  letter-spacing:.02em;
+}
+
+.coords{
+  font-family:'JetBrains Mono',monospace;
+  font-size:10.5px;
+  color:var(--text-dim);
+  text-align:right;
+  line-height:1.7;
+  padding-top:4px;
+}
+.coords b{color:var(--star-dim); font-weight:500;}
+
+/* control dock */
+.dock{
+  position:absolute;
+  bottom:22px;
+  left:28px;
+  display:flex;
+  align-items:center;
+  gap:14px;
+  background:rgba(13,18,32,.72);
+  backdrop-filter:blur(10px);
+  border:1px solid var(--panel-line);
+  border-radius:12px;
+  padding:10px 16px;
+  box-shadow:0 8px 30px rgba(0,0,0,.4);
+}
+
+.btn{
+  appearance:none;
+  border:1px solid var(--panel-line);
+  background:var(--panel);
+  color:var(--text);
+  width:34px;height:34px;
+  border-radius:8px;
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;
+  transition:border-color .15s, color .15s, background .15s;
+  font-size:14px;
+}
+.btn:hover{border-color:var(--accent-cool); color:var(--star);}
+.btn:focus-visible{outline:2px solid var(--accent-cool); outline-offset:2px;}
+.btn svg{width:15px;height:15px;}
+
+.dock-sep{width:1px;height:22px;background:var(--panel-line);}
+
+.speed-group{
+  display:flex; align-items:center; gap:8px;
+}
+.speed-label{
+  font-family:'JetBrains Mono',monospace;
+  font-size:10px;
+  color:var(--text-dim);
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  min-width:64px;
+}
+input[type="range"]{
+  -webkit-appearance:none;
+  width:110px;
+  height:3px;
+  background:var(--panel-line);
+  border-radius:2px;
+  outline:none;
+}
+input[type="range"]::-webkit-slider-thumb{
+  -webkit-appearance:none;
+  width:12px;height:12px;
+  border-radius:50%;
+  background:var(--accent);
+  cursor:pointer;
+  box-shadow:0 0 8px rgba(255,177,94,.6);
+}
+input[type="range"]::-moz-range-thumb{
+  width:12px;height:12px;border:none;border-radius:50%;
+  background:var(--accent); cursor:pointer;
+  box-shadow:0 0 8px rgba(255,177,94,.6);
+}
+
+.toggle{
+  display:flex; align-items:center; gap:6px;
+  font-family:'JetBrains Mono',monospace;
+  font-size:10.5px;
+  color:var(--text-dim);
+  cursor:pointer;
+  user-select:none;
+  letter-spacing:.03em;
+}
+.toggle input{accent-color:var(--accent-cool); cursor:pointer;}
+.toggle.on{color:var(--star-dim);}
+
+/* legend */
+.legend{
+  position:absolute;
+  bottom:22px;
+  right:28px;
+  background:rgba(13,18,32,.72);
+  backdrop-filter:blur(10px);
+  border:1px solid var(--panel-line);
+  border-radius:12px;
+  padding:12px 16px;
+  font-family:'JetBrains Mono',monospace;
+  font-size:10.5px;
+  color:var(--text-dim);
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  min-width:172px;
+}
+.legend-title{
+  color:var(--text-dim);
+  text-transform:uppercase;
+  letter-spacing:.12em;
+  font-size:9px;
+  margin-bottom:2px;
+  opacity:.8;
+}
+.legend-row{display:flex; align-items:center; gap:8px;}
+.swatch{width:9px;height:9px;border-radius:50%;flex:none;}
+
+/* info panel */
+.info-panel{
+  position:absolute;
+  top:100px;
+  right:28px;
+  width:252px;
+  background:rgba(11,15,26,.86);
+  backdrop-filter:blur(12px);
+  border:1px solid var(--panel-line);
+  border-radius:14px;
+  padding:18px 18px 16px;
+  box-shadow:0 12px 40px rgba(0,0,0,.5);
+  opacity:0;
+  transform:translateY(-6px);
+  transition:opacity .25s ease, transform .25s ease;
+  pointer-events:none;
+}
+.info-panel.show{opacity:1; transform:translateY(0); pointer-events:auto;}
+.info-name{
+  font-family:'Space Grotesk',sans-serif;
+  font-size:16px;
+  font-weight:600;
+  color:var(--star);
+  margin:0 0 2px;
+}
+.info-kind{
+  font-family:'JetBrains Mono',monospace;
+  font-size:9.5px;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+  color:var(--accent);
+  margin-bottom:12px;
+  display:block;
+}
+.info-row{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  padding:6px 0;
+  border-top:1px solid var(--panel-line);
+  font-size:11.5px;
+}
+.info-row:first-of-type{border-top:1px solid var(--panel-line);}
+.info-row dt{color:var(--text-dim);}
+.info-row dd{margin:0; color:var(--star-dim); font-family:'JetBrains Mono',monospace; font-size:11px; text-align:right;}
+.info-close{
+  position:absolute; top:14px; right:14px;
+  width:22px;height:22px;
+  border:none; background:transparent; color:var(--text-dim);
+  cursor:pointer; font-size:15px; line-height:1;
+  display:flex;align-items:center;justify-content:center;
+  border-radius:6px;
+}
+.info-close:hover{color:var(--star); background:var(--panel-line);}
+
+/* scale bar */
+.scalebar{
+  position:absolute;
+  left:28px;
+  bottom:80px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  font-family:'JetBrains Mono',monospace;
+  font-size:10px;
+  color:var(--text-dim);
+}
+.scaleline{
+  height:1px;
+  background:var(--text-dim);
+  position:relative;
+}
+.scaleline::before, .scaleline::after{
+  content:'';
+  position:absolute;
+  top:-3px;
+  width:1px;height:7px;
+  background:var(--text-dim);
+}
+.scaleline::before{left:0;}
+.scaleline::after{right:0;}
+
+.hint{
+  position:absolute;
+  top:100px; left:28px;
+  font-family:'JetBrains Mono',monospace;
+  font-size:10px;
+  color:var(--text-dim);
+  opacity:.55;
+  max-width:200px;
+  line-height:1.6;
+  transition:opacity .4s ease;
+}
+.hint.faded{opacity:0;}
+
+/* ---------- Solar System overlay ---------- */
+.solar-overlay{
+  position:absolute;
+  inset:0;
+  z-index:20;
+  background:rgba(4,5,9,.72);
+  backdrop-filter:blur(6px);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .25s ease;
+}
+.solar-overlay.show{opacity:1; pointer-events:auto;}
+
+.solar-card{
+  position:relative;
+  width:min(920px, 94vw);
+  height:min(720px, 88vh);
+  background:radial-gradient(circle at 50% 46%, #0b0e1a 0%, #05060a 70%);
+  border:1px solid var(--panel-line);
+  border-radius:18px;
+  box-shadow:0 30px 80px rgba(0,0,0,.6);
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+}
+
+.solar-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  padding:20px 22px 0;
+}
+.solar-title-block{display:flex; flex-direction:column; gap:2px;}
+.solar-title-block h2{
+  margin:0;
+  font-family:'Space Grotesk',sans-serif;
+  font-weight:600;
+  font-size:20px;
+  color:var(--star);
+}
+.solar-title-block span{
+  font-family:'JetBrains Mono',monospace;
+  font-size:10.5px;
+  color:var(--text-dim);
+  letter-spacing:.03em;
+}
+
+.solar-canvas-wrap{flex:1; position:relative; min-height:0;}
+#solarCanvas{display:block; width:100%; height:100%;}
+
+.solar-controls{
+  position:absolute;
+  bottom:16px;
+  left:22px;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  background:rgba(13,18,32,.7);
+  border:1px solid var(--panel-line);
+  border-radius:10px;
+  padding:8px 14px;
+}
+
+.solar-legend{
+  position:absolute;
+  top:20px;
+  right:22px;
+  display:flex;
+  flex-direction:column;
+  gap:5px;
+  font-family:'JetBrains Mono',monospace;
+  font-size:9.5px;
+  color:var(--text-dim);
+  text-align:right;
+}
+.solar-legend-row{display:flex; align-items:center; justify-content:flex-end; gap:6px;}
+.solar-legend .swatch{width:7px;height:7px;}
+
+.motion-note{
+  position:absolute;
+  bottom:16px;
+  right:22px;
+  font-family:'JetBrains Mono',monospace;
+  font-size:9.5px;
+  color:var(--accent-cool);
+  opacity:.8;
+  text-align:right;
+  line-height:1.5;
+  max-width:190px;
+}
+
+@media (max-width: 720px){
+  .legend{display:none;}
+  .info-panel{width:200px; right:16px;}
+  h1{font-size:20px;}
+  .dock{left:16px; padding:8px 12px; gap:10px;}
+  .speed-group{display:none;}
+  .hint{display:none;}
+}
+</style>
+
+<div class="stage">
+  <canvas id="sky"></canvas>
+</div>
+
+<div class="hud">
+  <div class="topbar">
+    <div class="title-block">
+      <span class="eyebrow">Galactic Center Simulation</span>
+      <h1>Sagittarius A*</h1>
+      <span class="subtitle">Milky Way — top-down view · barred spiral, type SBc</span>
+    </div>
+    <div class="coords" id="coords">
+      R = <b>8.18 kpc</b> from center<br>
+      M(Sgr A*) = <b>4.30 × 10⁶ M☉</b><br>
+      <span id="fps">t = 0 Myr</span>
+    </div>
+  </div>
+
+  <div class="hint" id="hint">Scroll to zoom · drag to pan<br>click Sgr A* or the Sun for data</div>
+
+  <div class="scalebar" id="scalebar">
+    <div class="scaleline" id="scaleline" style="width:80px;"></div>
+    <span id="scaletext">10,000 ly</span>
+  </div>
+
+  <div class="dock">
+    <button class="btn" id="playBtn" aria-label="Pause simulation" title="Play / pause">
+      <svg viewBox="0 0 24 24" fill="currentColor" id="playIcon"><path d="M8 5v14l11-7z"/></svg>
+    </button>
+    <div class="dock-sep"></div>
+    <div class="speed-group">
+      <span class="speed-label">Rate</span>
+      <input type="range" id="speed" min="0" max="200" value="60">
+    </div>
+    <div class="dock-sep"></div>
+    <label class="toggle on" id="orbitToggleLabel">
+      <input type="checkbox" id="orbitToggle" checked> orbits
+    </label>
+    <label class="toggle on" id="labelToggleLabel">
+      <input type="checkbox" id="labelToggle" checked> labels
+    </label>
+    <div class="dock-sep"></div>
+    <button class="btn" id="resetBtn" aria-label="Reset view" title="Reset view">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+    </button>
+    <div class="dock-sep"></div>
+    <button class="btn" id="openSolarBtn" aria-label="Open Solar System view" title="Solar System view" style="width:auto; padding:0 12px; gap:6px; display:flex; align-items:center;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="2.3" fill="currentColor" stroke="none"/><ellipse cx="12" cy="12" rx="9.5" ry="4.2"/></svg>
+      <span style="font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:.04em;">Solar System</span>
+    </button>
+  </div>
+
+  <div class="legend">
+    <span class="legend-title">Structure</span>
+    <div class="legend-row"><span class="swatch" style="background:#ffd7a8;"></span>Nuclear bulge</div>
+    <div class="legend-row"><span class="swatch" style="background:#8fd6ff;"></span>Perseus Arm</div>
+    <div class="legend-row"><span class="swatch" style="background:#c7a8ff;"></span>Sagittarius Arm</div>
+    <div class="legend-row"><span class="swatch" style="background:#ffb0a0;"></span>Scutum–Centaurus</div>
+    <div class="legend-row"><span class="swatch" style="background:#ffe27a;"></span>Orion Spur (us)</div>
+  </div>
+
+  <div class="info-panel" id="infoPanel">
+    <button class="info-close" id="infoClose" aria-label="Close">✕</button>
+    <p class="info-name" id="infoName">—</p>
+    <span class="info-kind" id="infoKind">—</span>
+    <dl id="infoRows"></dl>
+    <button class="btn" id="infoOpenSolar" style="display:none; width:auto; margin-top:12px; padding:7px 12px; font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:.03em;">View solar system →</button>
+  </div>
+</div>
+
+<div class="solar-overlay" id="solarOverlay">
+  <div class="solar-card">
+    <div class="solar-head">
+      <div class="solar-title-block">
+        <h2>The Solar System</h2>
+        <span>Sun-centered · orbits to scale (√AU) · true relative periods</span>
+      </div>
+      <button class="info-close" id="solarClose" aria-label="Close" style="position:static;">✕</button>
+    </div>
+    <div class="solar-canvas-wrap">
+      <canvas id="solarCanvas"></canvas>
+      <div class="solar-legend" id="solarLegend"></div>
+      <div class="motion-note">↗ direction of the Sun's<br>orbit around Sagittarius A*</div>
+    </div>
+    <div class="solar-controls">
+      <button class="btn" id="solarPlayBtn" title="Play / pause">
+        <svg viewBox="0 0 24 24" fill="currentColor" id="solarPlayIcon"><path d="M8 5v14l11-7z"/></svg>
+      </button>
+      <div class="speed-group">
+        <span class="speed-label">Days/sec</span>
+        <input type="range" id="solarSpeed" min="1" max="400" value="60">
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  const canvas = document.getElementById('sky');
+  const ctx = canvas.getContext('2d');
+  let W, H, DPR;
+
+  function resize(){
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = canvas.clientWidth; H = canvas.clientHeight;
+    canvas.width = W * DPR; canvas.height = H * DPR;
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+  }
+  window.addEventListener('resize', resize);
+
+  // ---------------- view state ----------------
+  const view = { zoom: 1, panX: 0, panY: 0 };
+  const DEFAULT_ZOOM = 1;
+
+  // world units: 1 unit = 1000 light-years (kly). Galaxy radius ~50 kly.
+  const GALAXY_R = 50; // kly
+  const SUN_R = 26.7;  // kly from center (~8.18 kpc)
+  const SUN_ANGLE0 = -0.5;
+
+  // galactic rotation: roughly rigid-body-ish near sun for simplicity; full rotation period at solar radius ~230 Myr
+  const SUN_PERIOD_MYR = 230;
+  let simTime = 0; // Myr
+  let playing = true;
+  let speedMyrPerSec = 6; // controlled by slider
+
+  // ---------------- procedural starfield ----------------
+  function rand(seed){ // deterministic-ish PRNG
+    let s = seed;
+    return function(){
+      s = (s * 9301 + 49297) % 233280;
+      return s / 233280;
+    };
+  }
+  const rng = rand(1337);
+
+  const ARMS = [
+    { name:'Perseus Arm',           color:[143,214,255], a:0.55, spread:0.34, tightness:0.32 },
+    { name:'Sagittarius Arm',       color:[199,168,255], a:2.15, spread:0.34, tightness:0.30 },
+    { name:'Scutum–Centaurus Arm',  color:[255,176,160], a:3.75, spread:0.34, tightness:0.34 },
+    { name:'Orion Spur',            color:[255,226,122], a:1.35, spread:0.22, tightness:0.30, minor:true },
+    { name:'Norma Arm',             color:[160,200,190], a:5.35, spread:0.30, tightness:0.33 },
+  ];
+
+  const stars = [];
+  function buildGalaxy(){
+    stars.length = 0;
+    // nuclear bulge — dense, warm, small radius
+    const bulgeCount = 900;
+    for(let i=0;i<bulgeCount;i++){
+      const r = Math.pow(rng(), 0.5) * 5.5 + 0.4;
+      const ang = rng() * Math.PI * 2;
+      stars.push({
+        r, ang0: ang,
+        rot: 1/(0.4+r*0.06), // faster inner rotation (illustrative differential rotation)
+        size: rng()*1.1 + 0.4,
+        c: [255, 200+rng()*40, 150+rng()*60],
+        tw: rng()*Math.PI*2,
+        bulge:true
+      });
+    }
+    // spiral arm stars (logarithmic spiral scatter)
+    ARMS.forEach(arm=>{
+      const count = arm.minor ? 900 : 2600;
+      for(let i=0;i<count;i++){
+        const t = rng() * 4.2 + 0.15;             // parametric distance along arm
+        const r = 6 + t * (GALAXY_R-8) / 4.2;
+        const theta = arm.a + t / arm.tightness + (rng()-0.5)*arm.spread*(0.4+t*0.5);
+        const jitterR = r + (rng()-0.5) * (2.2 + r*0.05);
+        stars.push({
+          r: Math.max(4, jitterR),
+          ang0: theta,
+          rot: 1/(6 + Math.max(4,jitterR)*0.55),
+          size: rng()*1.15 + 0.35,
+          c: [
+            arm.color[0] + (rng()-0.5)*40,
+            arm.color[1] + (rng()-0.5)*40,
+            arm.color[2] + (rng()-0.5)*40
+          ],
+          tw: rng()*Math.PI*2,
+        });
+      }
+    });
+    // sparse halo field beyond the disk
+    for(let i=0;i<600;i++){
+      const r = GALAXY_R + rng()*30;
+      const ang = rng()*Math.PI*2;
+      stars.push({
+        r, ang0:ang, rot: 1/(60+r), size: rng()*0.7+0.2,
+        c:[210,220,240], tw: rng()*Math.PI*2, halo:true
+      });
+    }
+  }
+  buildGalaxy();
+
+  // background deep-field stars (static, screen space, parallax-ish with pan)
+  const bgStars = [];
+  for(let i=0;i<380;i++){
+    bgStars.push({ x: Math.random(), y: Math.random(), s: Math.random()*1.3+0.2, tw: Math.random()*Math.PI*2 });
+  }
+
+  // ---------------- coordinate transform ----------------
+  // world (kly) -> screen px
+  function worldToScreen(x, y){
+    const scale = baseScale() * view.zoom;
+    return {
+      x: W/2 + view.panX + x*scale,
+      y: H/2 + view.panY + y*scale
+    };
+  }
+  function baseScale(){
+    return Math.min(W, H) / (GALAXY_R * 2.35);
+  }
+
+  // ---------------- objects of interest ----------------
+  const OBJECTS = {
+    sgrA: {
+      name: 'Sagittarius A*',
+      kind: 'Supermassive black hole',
+      rows: [
+        ['Mass', '4.30 × 10⁶ M☉'],
+        ['Schwarzschild radius', '≈ 12.7 million km'],
+        ['Distance from Sun', '26,670 ly'],
+        ['Discovered', 'Radio source, 1974'],
+      ]
+    },
+    sun: {
+      name: 'The Sun',
+      kind: 'G-type star · Orion Spur',
+      rows: [
+        ['Galactocentric radius', '8.18 kpc (26,670 ly)'],
+        ['Orbital speed', '≈ 230 km/s'],
+        ['Galactic year', '≈ 230 million yr'],
+        ['Vertical bob', '± 250 ly, 2–3 crossings / orbit'],
+      ]
+    }
+  };
+
+  const infoPanel = document.getElementById('infoPanel');
+  const infoName = document.getElementById('infoName');
+  const infoKind = document.getElementById('infoKind');
+  const infoRows = document.getElementById('infoRows');
+  function showInfo(key){
+    const o = OBJECTS[key];
+    if(!o) return;
+    infoName.textContent = o.name;
+    infoKind.textContent = o.kind;
+    infoRows.innerHTML = o.rows.map(r=>`<div class="info-row"><dt>${r[0]}</dt><dd>${r[1]}</dd></div>`).join('');
+    infoPanel.classList.add('show');
+    const solarBtn = document.getElementById('infoOpenSolar');
+    solarBtn.style.display = key === 'sun' ? 'block' : 'none';
+  }
+  document.getElementById('infoClose').addEventListener('click', ()=> infoPanel.classList.remove('show'));
+
+  // ---------------- draw ----------------
+  let showOrbits = true, showLabels = true;
+
+  function drawBackground(){
+    ctx.fillStyle = '#05060a';
+    ctx.fillRect(0,0,W,H);
+    // subtle radial vignette toward center glow
+    const g = ctx.createRadialGradient(W/2,H/2,0, W/2,H/2, Math.max(W,H)*0.75);
+    g.addColorStop(0,'rgba(30,20,45,0.55)');
+    g.addColorStop(0.35,'rgba(10,10,20,0.25)');
+    g.addColorStop(1,'rgba(5,6,10,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0,0,W,H);
+
+    ctx.save();
+    bgStars.forEach(s=>{
+      const tw = 0.55 + 0.45*Math.sin(s.tw + simTime*0.02);
+      ctx.globalAlpha = tw*0.6;
+      ctx.fillStyle = '#dfe6ff';
+      ctx.beginPath();
+      ctx.arc(s.x*W, s.y*H, s.s, 0, Math.PI*2);
+      ctx.fill();
+    });
+    ctx.restore();
+  }
+
+  function drawOrbitRing(r, color, dash){
+    const scale = baseScale()*view.zoom;
+    const c0 = worldToScreen(0,0);
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = 0.35;
+    ctx.lineWidth = 1;
+    if(dash) ctx.setLineDash(dash);
+    ctx.beginPath();
+    ctx.arc(c0.x, c0.y, r*scale, 0, Math.PI*2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawStars(){
+    const scale = baseScale()*view.zoom;
+    const cx = W/2+view.panX, cy = H/2+view.panY;
+    for(let i=0;i<stars.length;i++){
+      const s = stars[i];
+      const ang = s.ang0 + simTime * s.rot * 0.012;
+      const x = cx + Math.cos(ang)*s.r*scale;
+      const y = cy + Math.sin(ang)*s.r*scale*0.62; // slight ellipse for pseudo-perspective... actually keep circular for top-down
+      const yy = cy + Math.sin(ang)*s.r*scale;
+      if(x < -20 || x > W+20 || yy < -20 || yy > H+20) continue;
+      const tw = s.halo ? 0.5 : (0.65 + 0.35*Math.sin(s.tw + simTime*0.05));
+      ctx.globalAlpha = (s.halo?0.35:0.85) * tw;
+      ctx.fillStyle = `rgb(${s.c[0]|0},${s.c[1]|0},${s.c[2]|0})`;
+      ctx.beginPath();
+      ctx.arc(x, yy, Math.max(0.4, s.size*Math.min(1.6,view.zoom*0.8+0.3)), 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawSgrA(){
+    const c = worldToScreen(0,0);
+    const scale = baseScale()*view.zoom;
+    const t = simTime*0.05;
+
+    // outer glow
+    const glowR = 26*Math.sqrt(view.zoom);
+    const g = ctx.createRadialGradient(c.x,c.y,0, c.x,c.y, glowR);
+    g.addColorStop(0,'rgba(255,200,140,0.9)');
+    g.addColorStop(0.25,'rgba(255,140,70,0.45)');
+    g.addColorStop(0.6,'rgba(140,80,180,0.15)');
+    g.addColorStop(1,'rgba(140,80,180,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(c.x,c.y,glowR,0,Math.PI*2); ctx.fill();
+
+    // accretion disk (rotating ellipse-ish ring of hot color)
+    ctx.save();
+    ctx.translate(c.x,c.y);
+    ctx.rotate(t*0.6);
+    const diskR = 9*Math.sqrt(view.zoom)+3;
+    const ringGrad = ctx.createLinearGradient(-diskR,0,diskR,0);
+    ringGrad.addColorStop(0,'rgba(255,120,60,0.05)');
+    ringGrad.addColorStop(0.5,'rgba(255,210,150,0.95)');
+    ringGrad.addColorStop(1,'rgba(255,120,60,0.05)');
+    ctx.strokeStyle = ringGrad;
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.ellipse(0,0,diskR, diskR*0.34, 0, 0, Math.PI*2);
+    ctx.stroke();
+    ctx.restore();
+
+    // event horizon (dark core)
+    const coreR = Math.max(3, 3.4*Math.sqrt(view.zoom));
+    ctx.fillStyle = '#000';
+    ctx.beginPath(); ctx.arc(c.x,c.y,coreR,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,200,150,0.5)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(c.x,c.y,coreR,0,Math.PI*2); ctx.stroke();
+
+    if(showLabels){
+      ctx.font = '500 11px "JetBrains Mono", monospace';
+      ctx.fillStyle = 'rgba(255,220,190,0.85)';
+      ctx.textAlign='left';
+      ctx.fillText('Sgr A*', c.x+glowR*0.55+6, c.y+3);
+    }
+
+    return {x:c.x, y:c.y, r: glowR};
+  }
+
+  function drawSun(){
+    const scale = baseScale()*view.zoom;
+    const ang = SUN_ANGLE0 + simTime * (1/ (SUN_PERIOD_MYR)) * (2*Math.PI) * 0.012 * (SUN_PERIOD_MYR/ (6+SUN_R*0.55) / (1/(6+SUN_R*0.55))); // placeholder, replaced below
+    return ang;
+  }
+
+  // We compute the sun's angle using the same rotation law as arm stars at its radius so it stays consistent visually.
+  const SUN_ROT = 1/(6+SUN_R*0.55);
+  function sunPosition(){
+    const ang = SUN_ANGLE0 + simTime * SUN_ROT * 0.012;
+    return ang;
+  }
+
+  function drawSunMarker(){
+    const scale = baseScale()*view.zoom;
+    const cx = W/2+view.panX, cy = H/2+view.panY;
+    const ang = sunPosition();
+    const x = cx + Math.cos(ang)*SUN_R*scale;
+    const y = cy + Math.sin(ang)*SUN_R*scale;
+
+    const glow = ctx.createRadialGradient(x,y,0,x,y,9);
+    glow.addColorStop(0,'rgba(255,244,200,0.95)');
+    glow.addColorStop(1,'rgba(255,244,200,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.arc(x,y,9,0,Math.PI*2); ctx.fill();
+
+    ctx.fillStyle = '#fff6d8';
+    ctx.beginPath(); ctx.arc(x,y,2.4,0,Math.PI*2); ctx.fill();
+
+    if(showLabels){
+      ctx.font = '500 10.5px "JetBrains Mono", monospace';
+      ctx.fillStyle = 'rgba(255,244,200,0.85)';
+      ctx.textAlign='left';
+      ctx.fillText('Sun', x+8, y+3);
+    }
+    return {x,y,r:9};
+  }
+
+  let sgrAHit = null, sunHit = null;
+
+  function draw(){
+    drawBackground();
+
+    if(showOrbits){
+      drawOrbitRing(SUN_R, 'rgba(255,226,122,0.55)');
+      [15,30,GALAXY_R].forEach(r=> drawOrbitRing(r, 'rgba(140,150,190,0.28)', [2,5]));
+    }
+
+    drawStars();
+    sunHit = drawSunMarker();
+    sgrAHit = drawSgrA();
+
+    // time readout
+    document.getElementById('fps').textContent = 't = ' + Math.round(simTime).toLocaleString() + ' Myr';
+
+    // scale bar
+    const scale = baseScale()*view.zoom; // px per kly
+    let targetPx = 90;
+    let kly = targetPx/scale;
+    // round to nice number
+    const niceSteps = [1,2,5,10,20,50,100,200,500];
+    let nice = niceSteps.reduce((a,b)=> Math.abs(b-kly)<Math.abs(a-kly)?b:a);
+    const px = nice*scale;
+    document.getElementById('scaleline').style.width = px+'px';
+    document.getElementById('scaletext').textContent = (nice*1000).toLocaleString()+' ly';
+  }
+
+  // ---------------- animation loop ----------------
+  let lastT = performance.now();
+  function tick(now){
+    const dt = Math.min(0.05, (now-lastT)/1000);
+    lastT = now;
+    if(playing) simTime += dt * speedMyrPerSec;
+    draw();
+    requestAnimationFrame(tick);
+  }
+
+  // ---------------- interaction ----------------
+  let dragging=false, dragStart=null, panStart=null;
+  canvas.addEventListener('pointerdown', e=>{
+    dragging=true; canvas.classList.add('grabbing');
+    dragStart={x:e.clientX,y:e.clientY};
+    panStart={x:view.panX,y:view.panY};
+    canvas.setPointerCapture(e.pointerId);
+    fadeHint();
+  });
+  canvas.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    view.panX = panStart.x + (e.clientX-dragStart.x);
+    view.panY = panStart.y + (e.clientY-dragStart.y);
+  });
+  window.addEventListener('pointerup', ()=>{ dragging=false; canvas.classList.remove('grabbing'); });
+
+  canvas.addEventListener('wheel', e=>{
+    e.preventDefault();
+    fadeHint();
+    const factor = Math.exp(-e.deltaY*0.0012);
+    view.zoom = Math.min(14, Math.max(0.4, view.zoom*factor));
+  }, {passive:false});
+
+  let moved = false;
+  canvas.addEventListener('pointerdown', ()=> moved=false);
+  canvas.addEventListener('pointermove', e=>{ if(dragging) moved=true; });
+  canvas.addEventListener('click', e=>{
+    if(moved) return;
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX-rect.left, my = e.clientY-rect.top;
+    if(sgrAHit && Math.hypot(mx-sgrAHit.x, my-sgrAHit.y) < Math.max(14,sgrAHit.r*0.9)){
+      showInfo('sgrA'); return;
+    }
+    if(sunHit && Math.hypot(mx-sunHit.x, my-sunHit.y) < 14){
+      showInfo('sun'); return;
+    }
+  });
+
+  function fadeHint(){
+    document.getElementById('hint').classList.add('faded');
+  }
+
+  // controls
+  const playBtn = document.getElementById('playBtn');
+  const playIcon = document.getElementById('playIcon');
+  playBtn.addEventListener('click', ()=>{
+    playing = !playing;
+    playIcon.innerHTML = playing
+      ? '<path d="M8 5v14l11-7z"/>'
+      : '<path d="M7 5h4v14H7zM13 5h4v14h-4z"/>';
+    playBtn.title = playing ? 'Pause' : 'Play';
+  });
+
+  document.getElementById('speed').addEventListener('input', e=>{
+    speedMyrPerSec = (e.target.value/200) * 30;
+  });
+  speedMyrPerSec = (60/200)*30;
+
+  document.getElementById('orbitToggle').addEventListener('change', e=>{
+    showOrbits = e.target.checked;
+    document.getElementById('orbitToggleLabel').classList.toggle('on', showOrbits);
+  });
+  document.getElementById('labelToggle').addEventListener('change', e=>{
+    showLabels = e.target.checked;
+    document.getElementById('labelToggleLabel').classList.toggle('on', showLabels);
+  });
+
+  document.getElementById('resetBtn').addEventListener('click', ()=>{
+    view.zoom = DEFAULT_ZOOM; view.panX = 0; view.panY = 0;
+  });
+
+  setTimeout(fadeHint, 6500);
+
+  resize();
+  requestAnimationFrame(tick);
+
+  // ================= Solar System overlay =================
+  const solarCanvas = document.getElementById('solarCanvas');
+  const sctx = solarCanvas.getContext('2d');
+  let sW, sH, sDPR;
+  function resizeSolar(){
+    sDPR = Math.min(window.devicePixelRatio || 1, 2);
+    sW = solarCanvas.clientWidth; sH = solarCanvas.clientHeight;
+    solarCanvas.width = sW*sDPR; solarCanvas.height = sH*sDPR;
+    sctx.setTransform(sDPR,0,0,sDPR,0,0);
+  }
+  window.addEventListener('resize', resizeSolar);
+
+  // AU, orbital period (days), display radius (deg size), color
+  const PLANETS = [
+    { name:'Mercury', au:0.39, period:87.97,  size:2.1, color:'#b7b2ab' },
+    { name:'Venus',   au:0.72, period:224.7,  size:3.4, color:'#e8d3a0' },
+    { name:'Earth',   au:1.00, period:365.25, size:3.6, color:'#4f8ff0' },
+    { name:'Mars',    au:1.52, period:686.98, size:2.6, color:'#c1440e' },
+    { name:'Jupiter', au:5.20, period:4332.6, size:8.6, color:'#d8ae78' },
+    { name:'Saturn',  au:9.58, period:10759,  size:7.4, color:'#e3c078', ring:true },
+    { name:'Uranus',  au:19.2, period:30687,  size:5.4, color:'#9fe0e0' },
+    { name:'Neptune', au:30.05,period:60190,  size:5.2, color:'#5b7fe0' },
+  ];
+  const solarAngle0 = PLANETS.map((_,i)=> i*0.9 + 0.3);
+
+  let solarPlaying = true, solarDaysPerSec = (60/400)*400; // set properly below
+  let solarTime = 0; // days
+  let solarLastT = performance.now();
+
+  function solarScale(){
+    const maxAU = Math.sqrt(PLANETS[PLANETS.length-1].au);
+    return Math.min(sW,sH)*0.44 / maxAU;
+  }
+
+  function drawSolar(){
+    sctx.fillStyle = '#05060a';
+    sctx.fillRect(0,0,sW,sH);
+    const g = sctx.createRadialGradient(sW/2,sH/2,0, sW/2,sH/2, Math.max(sW,sH)*0.6);
+    g.addColorStop(0,'rgba(255,190,110,0.10)');
+    g.addColorStop(1,'rgba(5,6,10,0)');
+    sctx.fillStyle = g; sctx.fillRect(0,0,sW,sH);
+
+    const cx = sW/2, cy = sH/2;
+    const scale = solarScale();
+
+    // orbit rings
+    PLANETS.forEach(p=>{
+      const r = Math.sqrt(p.au)*scale;
+      sctx.strokeStyle = 'rgba(140,150,190,0.28)';
+      sctx.lineWidth = 1;
+      sctx.beginPath();
+      sctx.arc(cx,cy,r,0,Math.PI*2);
+      sctx.stroke();
+    });
+
+    // sun
+    const sunR = 13;
+    const sg = sctx.createRadialGradient(cx,cy,0,cx,cy,sunR*2.4);
+    sg.addColorStop(0,'rgba(255,238,180,0.95)');
+    sg.addColorStop(0.4,'rgba(255,190,90,0.55)');
+    sg.addColorStop(1,'rgba(255,150,60,0)');
+    sctx.fillStyle = sg;
+    sctx.beginPath(); sctx.arc(cx,cy,sunR*2.4,0,Math.PI*2); sctx.fill();
+    sctx.fillStyle = '#fff3cf';
+    sctx.beginPath(); sctx.arc(cx,cy,sunR,0,Math.PI*2); sctx.fill();
+    sctx.font = '500 10.5px "JetBrains Mono", monospace';
+    sctx.fillStyle = 'rgba(255,240,205,0.9)';
+    sctx.textAlign = 'center';
+    sctx.fillText('Sun', cx, cy+sunR+16);
+
+    // planets
+    PLANETS.forEach((p,i)=>{
+      const r = Math.sqrt(p.au)*scale;
+      const ang = solarAngle0[i] + (solarTime/p.period) * Math.PI*2;
+      const x = cx + Math.cos(ang)*r;
+      const y = cy + Math.sin(ang)*r;
+
+      if(p.ring){
+        sctx.save();
+        sctx.translate(x,y);
+        sctx.rotate(ang*0.15);
+        sctx.strokeStyle = 'rgba(227,192,120,0.75)';
+        sctx.lineWidth = 1.4;
+        sctx.beginPath();
+        sctx.ellipse(0,0,p.size*1.9, p.size*0.7, 0.5, 0, Math.PI*2);
+        sctx.stroke();
+        sctx.restore();
+      }
+
+      sctx.fillStyle = p.color;
+      sctx.beginPath();
+      sctx.arc(x,y,p.size,0,Math.PI*2);
+      sctx.fill();
+
+      sctx.font = '400 9.5px "JetBrains Mono", monospace';
+      sctx.fillStyle = 'rgba(210,216,235,0.75)';
+      sctx.textAlign = 'left';
+      sctx.fillText(p.name, x+p.size+5, y+3);
+    });
+
+    sctx.textAlign = 'left';
+    sctx.font = '400 9.5px "JetBrains Mono", monospace';
+    sctx.fillStyle = 'rgba(150,160,190,0.6)';
+    sctx.fillText('t = ' + Math.round(solarTime).toLocaleString() + ' days', 16, sH-16);
+  }
+
+  function solarTick(now){
+    const dt = Math.min(0.05,(now-solarLastT)/1000);
+    solarLastT = now;
+    if(solarPlaying) solarTime += dt*solarDaysPerSec;
+    if(solarOverlay.classList.contains('show')) drawSolar();
+    requestAnimationFrame(solarTick);
+  }
+  requestAnimationFrame(solarTick);
+
+  // legend
+  document.getElementById('solarLegend').innerHTML = PLANETS.map(p=>
+    `<div class="solar-legend-row"><span>${p.name}</span><span class="swatch" style="background:${p.color};"></span></div>`
+  ).join('');
+
+  const solarOverlay = document.getElementById('solarOverlay');
+  function openSolar(){
+    solarOverlay.classList.add('show');
+    solarLastT = performance.now();
+    resizeSolar();
+  }
+  function closeSolar(){ solarOverlay.classList.remove('show'); }
+
+  document.getElementById('openSolarBtn').addEventListener('click', openSolar);
+  document.getElementById('infoOpenSolar').addEventListener('click', openSolar);
+  document.getElementById('solarClose').addEventListener('click', closeSolar);
+  solarOverlay.addEventListener('click', e=>{ if(e.target === solarOverlay) closeSolar(); });
+
+  const solarPlayBtn = document.getElementById('solarPlayBtn');
+  const solarPlayIcon = document.getElementById('solarPlayIcon');
+  solarPlayBtn.addEventListener('click', ()=>{
+    solarPlaying = !solarPlaying;
+    solarPlayIcon.innerHTML = solarPlaying
+      ? '<path d="M8 5v14l11-7z"/>'
+      : '<path d="M7 5h4v14H7zM13 5h4v14h-4z"/>';
+  });
+  document.getElementById('solarSpeed').addEventListener('input', e=>{
+    solarDaysPerSec = Number(e.target.value);
+  });
+  solarDaysPerSec = 60;
+})();
+</script>
