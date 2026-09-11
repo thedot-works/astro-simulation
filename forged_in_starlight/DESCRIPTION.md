@@ -1,0 +1,3 @@
+# Forged in Starlight
+
+A pure-Python, data-driven scientific project on the nucleosynthetic origin of gold. It classifies all 103 elements by dominant formation process, shows why hydrostatic fusion cannot build anything past the iron peak, measures the chirp mass of the GW170817 neutron-star merger directly from real LIGO strain data, runs a waiting-point r-process network that lands exactly on Au-197, and reconstructs a sourced timeline for how r-process material reached Earth. Every number is computed and validated by a physics module before it is plotted; the accompanying video is a direct, labeled rendering of that output -- five sections, no illustrative or narrative content.

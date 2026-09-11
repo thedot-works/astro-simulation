@@ -1,0 +1,34 @@
+# Forged in Starlight -- dependencies
+#
+# Install into a fresh virtual environment:
+#   python3 -m venv venv && source venv/bin/activate   (or venv\Scripts\activate on Windows)
+#   pip install -r requirements.txt
+#
+# System dependencies (not pip-installable):
+#   - ffmpeg on PATH (used to concatenate the five rendered section videos)
+#   - Manim's own system libraries: Cairo and Pango. On Debian/Ubuntu:
+#       sudo apt-get install libcairo2-dev libpango1.0-dev pkg-config python3-dev
+#     On macOS (Homebrew):
+#       brew install cairo pango pkg-config
+#     See https://docs.manim.community/en/stable/installation.html if `pip
+#     install manim` fails on your platform -- this is a Manim/Cairo build
+#     requirement, not specific to this project.
+#   - A LaTeX distribution with dvisvgm, used only to render numeric axis
+#     tick labels on the plots (Manim's Axes.add_numbers). On Debian/Ubuntu:
+#       sudo apt-get install texlive-latex-base dvisvgm
+#     On macOS (Homebrew):
+#       brew install --cask mactex-no-gui
+#     Without this, figures render but axis tick numbers are silently
+#     dropped -- everything else in the pipeline still works.
+
+numpy>=1.26
+scipy>=1.11
+matplotlib>=3.8
+pandas>=2.0
+pillow>=10.0
+
+# real GW170817 strain analysis (physics/merger.py)
+gwpy>=3.0
+
+# the results-video render (render/cinematic/*.py)
+manim>=0.18
