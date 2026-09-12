@@ -1,0 +1,274 @@
+<title>Forge a Metal</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#05070d; --panel:#11141ecc; --panel-solid:#12141f; --border:#262c3d;
+  --text:#e8ecf5; --dim:#8792a8; --dim2:#5f6a80;
+  --gold:#e8b84b; --gold-dim:#8a6a2a; --accent:#6fb3e0;
+  --font-display:'Fraunces',Georgia,'Times New Roman',serif;
+  --font-body:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,sans-serif;
+  --font-mono:'IBM Plex Mono',ui-monospace,'SF Mono',Consolas,monospace;
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){
+    --bg:#eef1f6; --panel:#ffffffd9; --panel-solid:#ffffff; --border:#c9d0dd;
+    --text:#161a24; --dim:#5b6478; --dim2:#7c869a;
+    --gold:#9c6f14; --gold-dim:#c9a862; --accent:#215f8a;
+  }
+}
+:root[data-theme="light"]{
+  --bg:#eef1f6; --panel:#ffffffd9; --panel-solid:#ffffff; --border:#c9d0dd;
+  --text:#161a24; --dim:#5b6478; --dim2:#7c869a;
+  --gold:#9c6f14; --gold-dim:#c9a862; --accent:#215f8a;
+}
+*{box-sizing:border-box;}
+body{
+  background:var(--bg); color:var(--text); font-family:var(--font-body);
+  padding-inline:20px; padding-block:36px 64px;
+}
+.wrap{max-width:980px; margin:0 auto;}
+.eyebrow{
+  font-family:var(--font-mono); font-size:0.72rem; text-transform:uppercase;
+  letter-spacing:0.12em; color:var(--dim2); margin:0 0 10px;
+}
+h1{
+  font-family:var(--font-display); font-weight:600; font-size:2.6rem;
+  letter-spacing:-0.01em; margin:0 0 12px; text-wrap:balance;
+  font-optical-sizing:auto;
+}
+p.sub{
+  color:var(--dim); font-size:0.98rem; line-height:1.6; max-width:640px; margin:0 0 34px;
+}
+.grid{display:grid; grid-template-columns:1fr; gap:20px;}
+@media(min-width:800px){ .grid{grid-template-columns: 1.05fr 1fr;} }
+.panel{
+  background:var(--panel); border:1px solid var(--border); border-radius:16px;
+  padding:26px 28px; backdrop-filter:blur(8px);
+}
+.panel h2{
+  font-family:var(--font-mono); font-size:0.72rem; text-transform:uppercase;
+  letter-spacing:0.1em; color:var(--dim2); margin:0 0 22px; font-weight:500;
+}
+.control{margin-bottom:30px;}
+.control:last-of-type{margin-bottom:0;}
+.control label{display:block; font-size:0.94rem; font-weight:600; margin-bottom:5px;}
+.control .desc{font-size:0.83rem; color:var(--dim); margin-bottom:14px; line-height:1.5;}
+.strength-btns{display:flex; gap:8px;}
+.strength-btns button{
+  flex:1; padding:11px 8px; border-radius:10px; border:1px solid var(--border);
+  background:transparent; color:var(--text); font-family:var(--font-body); font-size:0.83rem;
+  cursor:pointer; transition:background .15s,border-color .15s,color .15s;
+}
+.strength-btns button span{display:block; opacity:.6; font-family:var(--font-mono); font-size:0.72rem; margin-top:3px;}
+.strength-btns button.active{background:var(--accent); border-color:var(--accent); color:var(--panel-solid); font-weight:600;}
+.strength-btns button.active span{opacity:.85;}
+.strength-btns button:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+input[type=range]{width:100%; accent-color:var(--gold);}
+input[type=range]:focus-visible{outline:2px solid var(--accent); outline-offset:3px;}
+.range-labels{display:flex; justify-content:space-between; font-family:var(--font-mono); font-size:0.7rem; color:var(--dim2); margin-top:4px;}
+.dn-value{font-family:var(--font-mono); font-variant-numeric:tabular-nums; font-weight:500; color:var(--gold);}
+.note{font-size:0.82rem; color:var(--dim); line-height:1.6; margin-top:22px; padding-top:18px; border-top:1px solid var(--border);}
+.result{display:flex; flex-direction:column; align-items:center; text-align:center; padding:14px 8px 6px;}
+.symbol{
+  font-family:var(--font-display); font-weight:600; font-size:4.2rem; line-height:1;
+  letter-spacing:-0.01em; margin-bottom:8px; font-optical-sizing:auto;
+}
+.ename{font-size:1.1rem; font-weight:600; margin-bottom:3px;}
+.ez{font-family:var(--font-mono); color:var(--dim); font-size:0.8rem; margin-bottom:18px;}
+.badge{
+  display:inline-block; padding:5px 14px; border-radius:999px; font-size:0.72rem;
+  font-weight:600; letter-spacing:0.03em; margin-bottom:20px; border:1px solid var(--border);
+  color:var(--dim);
+}
+.tally{
+  width:100%; display:grid; grid-template-columns:1fr 1fr; gap:12px 20px;
+  font-size:0.82rem; text-align:left; border-top:1px solid var(--border); padding-top:18px; margin-top:4px;
+}
+.tally .k{color:var(--dim2); font-family:var(--font-mono); font-size:0.68rem; text-transform:uppercase; letter-spacing:0.05em; display:block;}
+.tally .v{font-variant-numeric:tabular-nums; font-weight:500; margin-top:3px; display:block; font-family:var(--font-mono); font-size:0.85rem;}
+.gold-hit{
+  margin-top:16px; padding:12px 16px; border-radius:12px; font-size:0.83rem; line-height:1.5;
+  background:color-mix(in srgb, var(--gold) 14%, transparent);
+  border:1px solid color-mix(in srgb, var(--gold) 45%, transparent);
+  color:var(--text); display:none; text-align:left;
+}
+.gold-hit.show{display:block;}
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">Forged in Starlight — parameter chamber</p>
+  <h1>Forge a Metal</h1>
+  <p class="sub">The same waiting-point r-process model used in the merger sequence, made interactive.
+  A neutron star merger's ejecta captures neutrons rapidly until it stalls at a shell closure
+  (N = 50, 82, or 126). Once the free neutrons run out — roughly a second after merger — the
+  nucleus beta-decays down to whichever stable element sits at that mass number. Set how far the
+  capture chain runs and how many extra neutrons it grabs before freeze-out, and see which real
+  element comes out the other end.</p>
+
+  <div class="grid">
+    <div class="panel">
+      <h2>Conditions</h2>
+
+      <div class="control">
+        <label>Neutron irradiation strength</label>
+        <div class="desc">How far the rapid-capture chain runs before it's interrupted — which shell closure it reaches. This picks which of the three real r-process abundance peaks (A ≈ 80, 130, 195) you're forging into.</div>
+        <div class="strength-btns" id="strengthBtns">
+          <button data-n="50">Weak<span>N=50, A≈80</span></button>
+          <button data-n="82">Moderate<span>N=82, A≈130</span></button>
+          <button data-n="126">Strong<span>N=126, A≈195</span></button>
+        </div>
+      </div>
+
+      <div class="control">
+        <label>Freeze-out neutron captures <span class="dn-value" id="dnLabel">+30</span></label>
+        <div class="desc">How many extra neutrons the nucleus grabs while waiting at that shell closure, before the ejecta cools and neutron capture shuts off. Shifts the exact mass number — and so the exact element — within the peak.</div>
+        <input type="range" id="dn" min="-15" max="45" value="30" step="1">
+        <div class="range-labels"><span>fewer captures</span><span>more captures</span></div>
+      </div>
+
+      <div class="note" id="pathNote"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Result</h2>
+      <div class="result">
+        <div class="symbol" id="rSymbol" style="color:var(--gold)">Au</div>
+        <div class="ename" id="rName">Gold</div>
+        <div class="ez" id="rZ">Z = 79</div>
+        <div class="badge" id="rBadge">merging neutron stars</div>
+
+        <div class="tally">
+          <div><span class="k">Seed</span><span class="v">Fe-56 (Z=26, N=30)</span></div>
+          <div><span class="k">Mass number A</span><span class="v" id="tA">197</span></div>
+          <div><span class="k">Z after decay chain</span><span class="v" id="tZraw">79.1 → 79</span></div>
+          <div><span class="k">Stability formula</span><span class="v" style="font-size:0.72rem">Z = A / (1.98 + 0.015·A^⅔)</span></div>
+        </div>
+
+        <div class="gold-hit" id="goldHit">This is the exact condition behind the merger scene: Strong irradiation, +30 captures at freeze-out — real gold, A=197.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---- ported from physics/rprocess.py and physics/origins.py ----
+const SEED = { Z: 26, N: 30 }; // Fe-56
+const BETA_STEPS = { 50: 4, 82: 6, 126: 5 }; // cumulative beta-decay steps at each waiting point
+const MAGIC = [50, 82, 126];
+
+const ELEMENTS = [
+[1,"H","Hydrogen","big_bang"],[2,"He","Helium","big_bang"],[3,"Li","Lithium","cosmic_ray_fission"],
+[4,"Be","Beryllium","cosmic_ray_fission"],[5,"B","Boron","cosmic_ray_fission"],[6,"C","Carbon","stellar_fusion"],
+[7,"N","Nitrogen","stellar_fusion"],[8,"O","Oxygen","stellar_fusion"],[9,"F","Fluorine","stellar_fusion"],
+[10,"Ne","Neon","stellar_fusion"],[11,"Na","Sodium","stellar_fusion"],[12,"Mg","Magnesium","stellar_fusion"],
+[13,"Al","Aluminium","stellar_fusion"],[14,"Si","Silicon","stellar_fusion"],[15,"P","Phosphorus","exploding_massive_stars"],
+[16,"S","Sulfur","exploding_massive_stars"],[17,"Cl","Chlorine","exploding_massive_stars"],[18,"Ar","Argon","exploding_massive_stars"],
+[19,"K","Potassium","exploding_massive_stars"],[20,"Ca","Calcium","exploding_massive_stars"],[21,"Sc","Scandium","exploding_massive_stars"],
+[22,"Ti","Titanium","exploding_massive_stars"],[23,"V","Vanadium","exploding_white_dwarfs"],[24,"Cr","Chromium","exploding_white_dwarfs"],
+[25,"Mn","Manganese","exploding_white_dwarfs"],[26,"Fe","Iron","exploding_white_dwarfs"],[27,"Co","Cobalt","exploding_white_dwarfs"],
+[28,"Ni","Nickel","exploding_white_dwarfs"],[29,"Cu","Copper","dying_low_mass_stars"],[30,"Zn","Zinc","exploding_massive_stars"],
+[31,"Ga","Gallium","dying_low_mass_stars"],[32,"Ge","Germanium","dying_low_mass_stars"],[33,"As","Arsenic","merging_neutron_stars"],
+[34,"Se","Selenium","merging_neutron_stars"],[35,"Br","Bromine","merging_neutron_stars"],[36,"Kr","Krypton","merging_neutron_stars"],
+[37,"Rb","Rubidium","dying_low_mass_stars"],[38,"Sr","Strontium","dying_low_mass_stars"],[39,"Y","Yttrium","dying_low_mass_stars"],
+[40,"Zr","Zirconium","dying_low_mass_stars"],[41,"Nb","Niobium","dying_low_mass_stars"],[42,"Mo","Molybdenum","merging_neutron_stars"],
+[43,"Tc","Technetium","human_made"],[44,"Ru","Ruthenium","merging_neutron_stars"],[45,"Rh","Rhodium","merging_neutron_stars"],
+[46,"Pd","Palladium","merging_neutron_stars"],[47,"Ag","Silver","merging_neutron_stars"],[48,"Cd","Cadmium","merging_neutron_stars"],
+[49,"In","Indium","merging_neutron_stars"],[50,"Sn","Tin","dying_low_mass_stars"],[51,"Sb","Antimony","merging_neutron_stars"],
+[52,"Te","Tellurium","merging_neutron_stars"],[53,"I","Iodine","merging_neutron_stars"],[54,"Xe","Xenon","merging_neutron_stars"],
+[55,"Cs","Caesium","merging_neutron_stars"],[56,"Ba","Barium","dying_low_mass_stars"],[57,"La","Lanthanum","dying_low_mass_stars"],
+[58,"Ce","Cerium","dying_low_mass_stars"],[59,"Pr","Praseodymium","dying_low_mass_stars"],[60,"Nd","Neodymium","dying_low_mass_stars"],
+[61,"Pm","Promethium","human_made"],[62,"Sm","Samarium","merging_neutron_stars"],[63,"Eu","Europium","merging_neutron_stars"],
+[64,"Gd","Gadolinium","merging_neutron_stars"],[65,"Tb","Terbium","merging_neutron_stars"],[66,"Dy","Dysprosium","merging_neutron_stars"],
+[67,"Ho","Holmium","merging_neutron_stars"],[68,"Er","Erbium","merging_neutron_stars"],[69,"Tm","Thulium","merging_neutron_stars"],
+[70,"Yb","Ytterbium","dying_low_mass_stars"],[71,"Lu","Lutetium","dying_low_mass_stars"],[72,"Hf","Hafnium","dying_low_mass_stars"],
+[73,"Ta","Tantalum","merging_neutron_stars"],[74,"W","Tungsten","dying_low_mass_stars"],[75,"Re","Rhenium","merging_neutron_stars"],
+[76,"Os","Osmium","merging_neutron_stars"],[77,"Ir","Iridium","merging_neutron_stars"],[78,"Pt","Platinum","merging_neutron_stars"],
+[79,"Au","Gold","merging_neutron_stars"],[80,"Hg","Mercury","merging_neutron_stars"],[81,"Tl","Thallium","dying_low_mass_stars"],
+[82,"Pb","Lead","dying_low_mass_stars"],[83,"Bi","Bismuth","dying_low_mass_stars"],[84,"Po","Polonium","human_made"],
+[85,"At","Astatine","human_made"],[86,"Rn","Radon","human_made"],[87,"Fr","Francium","human_made"],
+[88,"Ra","Radium","merging_neutron_stars"],[89,"Ac","Actinium","human_made"],[90,"Th","Thorium","merging_neutron_stars"],
+[91,"Pa","Protactinium","human_made"],[92,"U","Uranium","merging_neutron_stars"],[93,"Np","Neptunium","human_made"],
+[94,"Pu","Plutonium","human_made"],[95,"Am","Americium","human_made"],[96,"Cm","Curium","human_made"],
+[97,"Bk","Berkelium","human_made"],[98,"Cf","Californium","human_made"],[99,"Es","Einsteinium","human_made"],
+[100,"Fm","Fermium","human_made"],[101,"Md","Mendelevium","human_made"],[102,"No","Nobelium","human_made"],
+[103,"Lr","Lawrencium","human_made"],
+].map(([Z,symbol,name,category])=>({Z,symbol,name,category}));
+
+const CATEGORY_LABEL = {
+  big_bang:"Big Bang nucleosynthesis", cosmic_ray_fission:"cosmic ray fission",
+  stellar_fusion:"fusion in stars", exploding_massive_stars:"exploding massive stars",
+  exploding_white_dwarfs:"exploding white dwarfs", dying_low_mass_stars:"dying low-mass stars (s-process)",
+  merging_neutron_stars:"merging neutron stars (r-process)", human_made:"human-made / unstable",
+};
+
+function stabilityValleyZ(A){
+  return A / (1.98 + 0.015 * Math.pow(A, 2/3));
+}
+
+function cumulativeZAt(magic){
+  let z = SEED.Z;
+  for (const m of MAGIC){
+    z += BETA_STEPS[m];
+    if (m === magic) break;
+  }
+  return z;
+}
+
+function elementForZ(z){
+  const zr = Math.round(z);
+  if (zr < 1) return null;
+  if (zr > 103) return { Z: zr, symbol: "—", name: "beyond the known table (Z>103)", category: "human_made" };
+  return ELEMENTS.find(e => e.Z === zr);
+}
+
+let strength = 126;
+
+function render(){
+  const dn = parseInt(document.getElementById('dn').value, 10);
+  document.getElementById('dnLabel').textContent = (dn >= 0 ? '+' : '') + dn;
+
+  const Zafter = cumulativeZAt(strength);
+  const Nfreeze = strength + dn;
+  const A = Zafter + Nfreeze;
+  const zRaw = stabilityValleyZ(A);
+  const el = elementForZ(zRaw);
+
+  document.getElementById('tA').textContent = A;
+  document.getElementById('tZraw').textContent = zRaw.toFixed(1) + ' → ' + Math.round(zRaw);
+
+  if (A < 1 || !el){
+    document.getElementById('rSymbol').textContent = '—';
+    document.getElementById('rName').textContent = 'no stable nucleus at this mass number';
+    document.getElementById('rZ').textContent = '';
+    document.getElementById('rBadge').textContent = 'out of range';
+    document.getElementById('goldHit').classList.remove('show');
+    return;
+  }
+
+  document.getElementById('rSymbol').textContent = el.symbol;
+  document.getElementById('rSymbol').style.color = el.category === 'merging_neutron_stars' ? 'var(--gold)' : 'var(--accent)';
+  document.getElementById('rName').textContent = el.name;
+  document.getElementById('rZ').textContent = 'Z = ' + el.Z;
+  document.getElementById('rBadge').textContent = CATEGORY_LABEL[el.category] || el.category;
+
+  const totalBetaSteps = BETA_STEPS[50] * (strength >= 50 ? 1 : 0)
+    + (strength >= 82 ? BETA_STEPS[82] : 0)
+    + (strength >= 126 ? BETA_STEPS[126] : 0);
+  document.getElementById('pathNote').textContent =
+    `Path: Fe-56 seed → rapid capture to N=${strength} → ${totalBetaSteps} beta decays en route (Z: 26→${Zafter}) → ${dn >= 0 ? dn + ' extra captures' : (-dn) + ' fewer captures than the shell closure'} at freeze-out → beta-decays down the A=${A} isobar to the stability valley.`;
+
+  document.getElementById('goldHit').classList.toggle('show', strength === 126 && dn === 30);
+}
+
+document.querySelectorAll('#strengthBtns button').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('#strengthBtns button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    strength = parseInt(btn.dataset.n, 10);
+    render();
+  });
+});
+document.querySelector('#strengthBtns button[data-n="126"]').classList.add('active');
+document.getElementById('dn').addEventListener('input', render);
+render();
+</script>

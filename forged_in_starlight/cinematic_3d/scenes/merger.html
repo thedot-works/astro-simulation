@@ -1,0 +1,319 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>html,body{margin:0;background:#000;overflow:hidden;}canvas{display:block;}</style>
+</head>
+<body>
+<script type="importmap">
+{
+  "imports": {
+    "three": "./three.module.js",
+    "three/addons/": "./addons/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+const W = 1280, H = 720;
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(W, H);
+renderer.setPixelRatio(1);
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, W / H, 0.1, 2000);
+
+// ---------- soft circular sprite (used for every point/particle so nothing
+// renders as a hard-edged square -- this is the single biggest lever for a
+// "fine", gas-like look instead of a blocky one) ----------
+function makeSoftSprite(hardness = 0.35) {
+  const size = 128;
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const ctx = c.getContext('2d');
+  const g = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
+  g.addColorStop(0.0, 'rgba(255,255,255,1)');
+  g.addColorStop(hardness, 'rgba(255,255,255,0.55)');
+  g.addColorStop(1.0, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  const tex = new THREE.CanvasTexture(c);
+  tex.needsUpdate = true;
+  return tex;
+}
+const softSprite = makeSoftSprite(0.25);
+const fineSprite = makeSoftSprite(0.08);
+
+// ---------- starfield ----------
+function makeStars(n, spread, size, color, sprite) {
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const r = spread * (0.3 + 0.7 * Math.random());
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+    pos[i*3]   = r * Math.sin(phi) * Math.cos(theta);
+    pos[i*3+1] = r * Math.sin(phi) * Math.sin(theta);
+    pos[i*3+2] = r * Math.cos(phi);
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const mat = new THREE.PointsMaterial({
+    color, size, sizeAttenuation: true, transparent: true, opacity: 0.9,
+    map: sprite, depthWrite: false, blending: THREE.AdditiveBlending,
+  });
+  return new THREE.Points(geo, mat);
+}
+scene.add(makeStars(6000, 900, 2.2, 0xaad4ff, fineSprite));
+scene.add(makeStars(2200, 400, 3.0, 0xffffff, fineSprite));
+
+// faint distant nebula haze -- large, very soft, low-opacity sprites
+function makeNebulaHaze(n, spread, color) {
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const r = spread * (0.5 + 0.5 * Math.random());
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+    pos[i*3]   = r * Math.sin(phi) * Math.cos(theta);
+    pos[i*3+1] = r * Math.sin(phi) * Math.sin(theta) * 0.4;
+    pos[i*3+2] = r * Math.cos(phi);
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const mat = new THREE.PointsMaterial({
+    color, size: 40, sizeAttenuation: true, transparent: true, opacity: 0.05,
+    map: softSprite, depthWrite: false, blending: THREE.AdditiveBlending,
+  });
+  return new THREE.Points(geo, mat);
+}
+scene.add(makeNebulaHaze(80, 300, 0x3a5fae));
+
+// ---------- neutron stars ----------
+function makeStar(color) {
+  const g = new THREE.Group();
+  const core = new THREE.Mesh(
+    new THREE.SphereGeometry(1.0, 48, 48),
+    new THREE.MeshBasicMaterial({ color })
+  );
+  g.add(core);
+  // layered soft-sprite halo instead of a single flat glow shell --
+  // several overlapping soft billboards read as a continuous gaseous glow
+  for (const [scale, opacity] of [[3.2, 0.5], [5.5, 0.28], [9.0, 0.14]]) {
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: softSprite, color, transparent: true, opacity,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    }));
+    spr.scale.setScalar(scale);
+    g.add(spr);
+  }
+  return g;
+}
+const starA = makeStar(0x9fdfff);
+const starB = makeStar(0xffcf8a);
+scene.add(starA, starB);
+
+// orbit trails -- a short fading comet-tail traced out analytically each
+// frame from the orbital angle, at fixed high angular resolution. This is
+// deliberately NOT built by accumulating one point per rendered frame:
+// with several full revolutions packed into a handful of capture frames,
+// that produced a faceted, low-poly "wireframe cage" instead of a smooth
+// curve. Sampling uniformly in orbital angle (and inverting the known
+// angle(t) relation to get position) keeps the tail smooth regardless of
+// frame count or angular velocity.
+const TRAIL_SAMPLES = 220;
+const TRAIL_ARC = 3.0; // radians of orbit history shown behind each star
+function makeTrail(color) {
+  const geo = new THREE.BufferGeometry();
+  const positions = new Float32Array(TRAIL_SAMPLES * 3);
+  const colors = new Float32Array(TRAIL_SAMPLES * 3);
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  const mat = new THREE.LineBasicMaterial({
+    vertexColors: true, transparent: true, opacity: 0.9,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+  });
+  const line = new THREE.Line(geo, mat);
+  line.userData.baseColor = new THREE.Color(color);
+  return line;
+}
+const trailA = makeTrail(0x9fdfff);
+const trailB = makeTrail(0xffcf8a);
+scene.add(trailA, trailB);
+
+// angle(t) = t*t*ANGLE_K must match the inspiral rotation formula below
+const ANGLE_K = 40.0;
+function sepAtT(t) {
+  const tt = Math.max(0, Math.min(1, t));
+  const idx = tt * (sep.length - 1);
+  const i0 = Math.floor(idx), i1 = Math.min(sep.length - 1, i0 + 1);
+  const f = idx - i0;
+  return sep[i0] * (1 - f) + sep[i1] * f;
+}
+function updateTrails(tNow) {
+  const angleNow = tNow * tNow * ANGLE_K;
+  const angleStart = Math.max(0, angleNow - TRAIL_ARC);
+  const posA = trailA.geometry.attributes.position.array;
+  const posB = trailB.geometry.attributes.position.array;
+  const colA = trailA.geometry.attributes.color.array;
+  const colB = trailB.geometry.attributes.color.array;
+  const baseA = trailA.userData.baseColor, baseB = trailB.userData.baseColor;
+  for (let i = 0; i < TRAIL_SAMPLES; i++) {
+    const f = i / (TRAIL_SAMPLES - 1);
+    const a = angleStart + (angleNow - angleStart) * f;
+    const t = Math.sqrt(a / ANGLE_K);
+    const r = sepAtT(t) * SCALE / 2;
+    const cx = r * Math.cos(a), cz = r * Math.sin(a);
+    posA[i*3] = cx; posA[i*3+1] = 0; posA[i*3+2] = cz;
+    posB[i*3] = -cx; posB[i*3+1] = 0; posB[i*3+2] = -cz;
+    const fade = Math.pow(f, 1.6);
+    colA[i*3] = baseA.r * fade; colA[i*3+1] = baseA.g * fade; colA[i*3+2] = baseA.b * fade;
+    colB[i*3] = baseB.r * fade; colB[i*3+1] = baseB.g * fade; colB[i*3+2] = baseB.b * fade;
+  }
+  trailA.geometry.attributes.position.needsUpdate = true;
+  trailB.geometry.attributes.position.needsUpdate = true;
+  trailA.geometry.attributes.color.needsUpdate = true;
+  trailB.geometry.attributes.color.needsUpdate = true;
+}
+
+// ---------- ejecta particle system (kilonova) ----------
+// two populations: a large, fine "dust" field (many, tiny, dim -- gives
+// the smooth gas-density look) and a smaller "clump" field (fewer,
+// larger, brighter -- gives visible structure inside the cloud), the way
+// a real hydro/particle simulation renders as density plus substructure.
+function buildEjecta(n, sizeBase, opacityBase, speedMin, speedMax) {
+  const geo = new THREE.BufferGeometry();
+  const posArr = new Float32Array(n * 3);
+  const vel = new Float32Array(n * 3);
+  const colorArr = new Float32Array(n * 3);
+  const goldColor = new THREE.Color(0xffc25c);
+  const blueColor = new THREE.Color(0x8fd9ff);
+  const whiteColor = new THREE.Color(0xfff6e6);
+  for (let i = 0; i < n; i++) {
+    posArr[i*3] = 0; posArr[i*3+1] = 0; posArr[i*3+2] = 0;
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+    const speed = speedMin + Math.random() * (speedMax - speedMin);
+    vel[i*3]   = speed * Math.sin(phi) * Math.cos(theta);
+    vel[i*3+1] = speed * Math.sin(phi) * Math.sin(theta) * 0.55;
+    vel[i*3+2] = speed * Math.cos(phi);
+    const roll = Math.random();
+    const c = roll < 0.5 ? goldColor : (roll < 0.85 ? whiteColor : blueColor);
+    colorArr[i*3] = c.r; colorArr[i*3+1] = c.g; colorArr[i*3+2] = c.b;
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(colorArr, 3));
+  const mat = new THREE.PointsMaterial({
+    size: sizeBase, vertexColors: true, transparent: true, opacity: 0,
+    map: fineSprite, blending: THREE.AdditiveBlending, depthWrite: false,
+  });
+  const pts = new THREE.Points(geo, mat);
+  pts.userData = { vel, baseOpacity: opacityBase };
+  return pts;
+}
+const ejectaDust = buildEjecta(26000, 0.16, 0.55, 0.3, 1.3);
+const ejectaClumps = buildEjecta(1400, 0.55, 0.85, 0.25, 1.0);
+scene.add(ejectaDust, ejectaClumps);
+
+// merger flash
+const flash = new THREE.Sprite(new THREE.SpriteMaterial({
+  map: softSprite, color: 0xffffff, transparent: true, opacity: 0,
+  blending: THREE.AdditiveBlending, depthWrite: false,
+}));
+scene.add(flash);
+
+camera.position.set(0, 14, 26);
+camera.lookAt(0, 0, 0);
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(W, H), 1.15, 0.85, 0.2);
+composer.addPass(bloom);
+
+// ---------- physics-driven inspiral ----------
+const DATA = await (await fetch('./act_data.json')).json();
+const sep = DATA.orbital_separation_km;      // km, decreasing
+const sepMax = sep[0];
+const SCALE = 9.0 / sepMax; // scene units at start
+
+function updateEjecta(pts, t, spreadScale) {
+  const posAttr = pts.geometry.attributes.position;
+  const vel = pts.userData.vel;
+  const n = posAttr.count;
+  for (let i = 0; i < n; i++) {
+    // slight non-linear expansion (fast early, decelerating) reads more
+    // like a real hydrodynamic blast than a constant-velocity expansion
+    const s = spreadScale * Math.pow(t, 0.85);
+    posAttr.array[i*3]   = vel[i*3]   * s;
+    posAttr.array[i*3+1] = vel[i*3+1] * s;
+    posAttr.array[i*3+2] = vel[i*3+2] * s;
+  }
+  posAttr.needsUpdate = true;
+}
+
+window.__renderFrame = function(frameIdx, totalFrames) {
+  const INSPIRAL_FRAMES = Math.floor(totalFrames * 0.55);
+  const FLASH_FRAMES = Math.floor(totalFrames * 0.06);
+  const EJECTA_FRAMES = totalFrames - INSPIRAL_FRAMES - FLASH_FRAMES;
+
+  let visSep, phase;
+  if (frameIdx < INSPIRAL_FRAMES) {
+    const idx = Math.min(sep.length - 1, Math.floor((frameIdx / INSPIRAL_FRAMES) * sep.length));
+    visSep = sep[idx] * SCALE;
+    phase = 'inspiral';
+  } else {
+    visSep = 0;
+    phase = frameIdx < INSPIRAL_FRAMES + FLASH_FRAMES ? 'flash' : 'ejecta';
+  }
+
+  if (phase === 'inspiral') {
+    const t = frameIdx / INSPIRAL_FRAMES;
+    const angle = t * t * ANGLE_K;
+    const r = visSep / 2;
+    starA.position.set(r * Math.cos(angle), 0, r * Math.sin(angle));
+    starB.position.set(-r * Math.cos(angle), 0, -r * Math.sin(angle));
+    starA.visible = starB.visible = true;
+    trailA.visible = trailB.visible = true;
+    updateTrails(t);
+    ejectaDust.material.opacity = 0;
+    ejectaClumps.material.opacity = 0;
+    flash.material.opacity = 0;
+  } else if (phase === 'flash') {
+    starA.visible = starB.visible = false;
+    trailA.visible = trailB.visible = false;
+    const t = (frameIdx - INSPIRAL_FRAMES) / FLASH_FRAMES;
+    flash.scale.setScalar(1.0 + t * 14.0);
+    flash.material.opacity = Math.sin(Math.min(1, t) * Math.PI) * 1.0;
+    ejectaDust.material.opacity = t * ejectaDust.userData.baseOpacity;
+    ejectaClumps.material.opacity = t * ejectaClumps.userData.baseOpacity;
+    updateEjecta(ejectaDust, Math.max(0.02, t), 1.6);
+    updateEjecta(ejectaClumps, Math.max(0.02, t), 1.6);
+  } else {
+    starA.visible = starB.visible = false;
+    trailA.visible = trailB.visible = false;
+    flash.material.opacity = Math.max(0, 1 - (frameIdx - INSPIRAL_FRAMES - FLASH_FRAMES) / (EJECTA_FRAMES * 0.25));
+    flash.scale.setScalar(15.0);
+    const t = (frameIdx - INSPIRAL_FRAMES - FLASH_FRAMES) / EJECTA_FRAMES;
+    ejectaDust.material.opacity = Math.max(0, ejectaDust.userData.baseOpacity * (1 - t * 0.55));
+    ejectaClumps.material.opacity = Math.max(0, ejectaClumps.userData.baseOpacity * (1 - t * 0.55));
+    const spread = 1.6 + t * 24.0;
+    updateEjecta(ejectaDust, 1.0, spread);
+    updateEjecta(ejectaClumps, 1.0, spread);
+  }
+
+  // slow cinematic camera orbit throughout
+  const camAngle = (frameIdx / totalFrames) * Math.PI * 0.6 - 0.3;
+  const camR = 30 - (phase !== 'inspiral' ? 6 : 0) - (frameIdx / totalFrames) * 4;
+  camera.position.set(camR * Math.sin(camAngle), 12 + Math.sin(frameIdx*0.01)*1.5, camR * Math.cos(camAngle));
+  camera.lookAt(0, 0, 0);
+
+  composer.render();
+};
+
+window.__ready = true;
+</script>
+</body>
+</html>

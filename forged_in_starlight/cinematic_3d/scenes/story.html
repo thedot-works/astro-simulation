@@ -1,0 +1,627 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+html,body{margin:0;background:#000;overflow:hidden;}
+canvas{display:block;}
+#caption{
+  position:fixed; left:0; right:0; bottom:52px; text-align:center;
+  font-family:Georgia,'Times New Roman',serif; font-size:22px; font-weight:400;
+  color:#f2ede0; letter-spacing:0.01em; text-shadow:0 2px 12px rgba(0,0,0,0.9);
+  pointer-events:none; opacity:0; padding:0 80px;
+}
+#fade{position:fixed; inset:0; background:#000; opacity:0; pointer-events:none;}
+</style>
+</head>
+<body>
+<div id="caption"></div>
+<div id="fade"></div>
+<script type="importmap">
+{
+  "imports": {
+    "three": "./three.module.js",
+    "three/addons/": "./addons/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+const W = 1280, H = 720;
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(W, H);
+renderer.setPixelRatio(1);
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, W / H, 0.1, 3000);
+
+const captionEl = document.getElementById('caption');
+const fadeEl = document.getElementById('fade');
+
+// ---------- soft circular sprite ----------
+function makeSoftSprite(hardness = 0.35) {
+  const size = 128;
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const ctx = c.getContext('2d');
+  const g = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
+  g.addColorStop(0.0, 'rgba(255,255,255,1)');
+  g.addColorStop(hardness, 'rgba(255,255,255,0.55)');
+  g.addColorStop(1.0, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  const tex = new THREE.CanvasTexture(c);
+  tex.needsUpdate = true;
+  return tex;
+}
+const softSprite = makeSoftSprite(0.25);
+const fineSprite = makeSoftSprite(0.08);
+
+// ---------- starfield (present throughout) ----------
+function makeStars(n, spread, size, color, sprite) {
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const r = spread * (0.3 + 0.7 * Math.random());
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+    pos[i*3]   = r * Math.sin(phi) * Math.cos(theta);
+    pos[i*3+1] = r * Math.sin(phi) * Math.sin(theta);
+    pos[i*3+2] = r * Math.cos(phi);
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const mat = new THREE.PointsMaterial({
+    color, size, sizeAttenuation: true, transparent: true, opacity: 0.9,
+    map: sprite, depthWrite: false, blending: THREE.AdditiveBlending,
+  });
+  return new THREE.Points(geo, mat);
+}
+scene.add(makeStars(7000, 1400, 2.2, 0xaad4ff, fineSprite));
+scene.add(makeStars(2400, 600, 3.0, 0xffffff, fineSprite));
+
+function makeNebulaHaze(n, spread, color) {
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const r = spread * (0.5 + 0.5 * Math.random());
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+    pos[i*3]   = r * Math.sin(phi) * Math.cos(theta);
+    pos[i*3+1] = r * Math.sin(phi) * Math.sin(theta) * 0.4;
+    pos[i*3+2] = r * Math.cos(phi);
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const mat = new THREE.PointsMaterial({
+    color, size: 40, sizeAttenuation: true, transparent: true, opacity: 0.05,
+    map: softSprite, depthWrite: false, blending: THREE.AdditiveBlending,
+  });
+  return new THREE.Points(geo, mat);
+}
+scene.add(makeNebulaHaze(80, 500, 0x3a5fae));
+
+camera.position.set(0, 14, 26);
+camera.lookAt(0, 0, 0);
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(W, H), 1.15, 0.85, 0.2);
+composer.addPass(bloom);
+
+const DATA = await (await fetch('./act_data.json')).json();
+
+// ============================================================
+// SEGMENT 1 -- the elements are forged across the universe
+// ============================================================
+const elemGroup = new THREE.Group();
+scene.add(elemGroup);
+const elemParticles = [];
+{
+  const cats = DATA.elements.map(e => e.category);
+  const colorMap = DATA.category_colors;
+  const n = DATA.elements.length;
+  for (let i = 0; i < n; i++) {
+    const e = DATA.elements[i];
+    const col = new THREE.Color(colorMap[e.category] || '#ffffff');
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: softSprite, color: col, transparent: true, opacity: 0,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    }));
+    const r = 16 + Math.random() * 14;
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+    const start = new THREE.Vector3(
+      r * Math.sin(phi) * Math.cos(theta),
+      r * Math.sin(phi) * Math.sin(theta) * 0.6,
+      r * Math.cos(phi)
+    );
+    const end = start.clone().multiplyScalar(0.22);
+    spr.scale.setScalar(e.is_gold ? 1.1 : 0.55 + Math.random()*0.25);
+    spr.userData = { start, end, isGold: !!e.is_gold, phase: Math.random() };
+    elemGroup.add(spr);
+    elemParticles.push(spr);
+  }
+}
+function updateSegment1(t) {
+  // t: 0..1 across the segment -- particles drift inward and begin a slow swirl
+  const ease = 1 - Math.pow(1 - t, 2);
+  for (const spr of elemParticles) {
+    const p = spr.userData;
+    const pos = new THREE.Vector3().lerpVectors(p.start, p.end, ease * 0.85);
+    const swirl = t * 1.4 + p.phase * 6.28;
+    const swirlR = 0.6;
+    pos.x += Math.cos(swirl) * swirlR;
+    pos.z += Math.sin(swirl) * swirlR;
+    spr.position.copy(pos);
+    spr.material.opacity = Math.min(1, t * 3) * (p.isGold ? 0.95 : 0.55) * (1 - Math.max(0, t - 0.85) / 0.15);
+  }
+}
+
+// ============================================================
+// SEGMENT 2 -- the binding-energy limit (curve as a landscape)
+// ============================================================
+const landscapeGroup = new THREE.Group();
+landscapeGroup.visible = false;
+scene.add(landscapeGroup);
+
+function bindingEnergyPerA(A) {
+  // illustrative shape only (not a measured dataset), exaggerated for a
+  // legible cinematic landscape: rises steeply for light nuclei, peaks at
+  // iron (A=56), then falls off well past it -- the same qualitative shape
+  // as the standard published curve, with the post-peak decline stretched
+  // for visual clarity rather than to physical scale.
+  const rise = 8.7 * (1 - Math.exp(-A / 11));
+  const decline = A > 56 ? Math.exp(-(A - 56) / 90) : 1.0;
+  return rise * decline;
+}
+function terrainHeightAt(xWorld) {
+  const A = Math.max(1, ((xWorld / 150) + 0.5) * 238);
+  return bindingEnergyPerA(A) * 6.0;
+}
+const LAND_SEG_A = 90, LAND_SEG_W = 16;
+const landGeo = new THREE.PlaneGeometry(150, 40, LAND_SEG_A, LAND_SEG_W);
+landGeo.rotateX(-Math.PI / 2);
+{
+  const posAttr = landGeo.attributes.position;
+  const colorArr = new Float32Array(posAttr.count * 3);
+  const peakColor = new THREE.Color(0xffd35c);
+  const lowColor = new THREE.Color(0x35538f);
+  for (let i = 0; i < posAttr.count; i++) {
+    const x = posAttr.getX(i);
+    const A = Math.max(1, ((x / 150) + 0.5) * 238);
+    const be = bindingEnergyPerA(A);
+    posAttr.setY(i, be * 6.0);
+    const f = THREE.MathUtils.clamp((be - 6.0) / (8.7 - 6.0), 0, 1);
+    const c = lowColor.clone().lerp(peakColor, Math.pow(f, 4.0)).multiplyScalar(0.5);
+    colorArr[i*3] = c.r; colorArr[i*3+1] = c.g; colorArr[i*3+2] = c.b;
+  }
+  landGeo.setAttribute('color', new THREE.BufferAttribute(colorArr, 3));
+  landGeo.computeVertexNormals();
+}
+const landMat = new THREE.MeshBasicMaterial({
+  vertexColors: true, wireframe: true, transparent: true, opacity: 0.85,
+});
+const landscape = new THREE.Mesh(landGeo, landMat);
+landscapeGroup.add(landscape);
+
+// a bright marker sprite at the iron peak (A=56)
+const ironMarker = new THREE.Sprite(new THREE.SpriteMaterial({
+  map: softSprite, color: 0xffe9a8, transparent: true, opacity: 0,
+  blending: THREE.AdditiveBlending, depthWrite: false,
+}));
+{
+  const peakA = 56;
+  const peakX = ((peakA / 238) - 0.5) * 150;
+  const peakY = bindingEnergyPerA(peakA) * 6.0;
+  ironMarker.position.set(peakX, peakY + 0.6, 0);
+  ironMarker.scale.setScalar(2.2);
+}
+landscapeGroup.add(ironMarker);
+
+function updateSegment2(t) {
+  landscape.material.opacity = 0.85 * Math.min(1, t * 4) * (1 - Math.max(0, t - 0.88) / 0.12);
+  ironMarker.material.opacity = Math.min(1, Math.max(0, (t - 0.25) * 3)) * (1 - Math.max(0, t - 0.88) / 0.12);
+  ironMarker.scale.setScalar(2.0 + Math.sin(t * 40) * 0.15);
+}
+
+// ============================================================
+// SEGMENT 3 -- the merger (inspiral / flash / ejecta)
+// ============================================================
+const mergerGroup = new THREE.Group();
+mergerGroup.visible = false;
+scene.add(mergerGroup);
+
+function makeStar(color) {
+  const g = new THREE.Group();
+  const core = new THREE.Mesh(
+    new THREE.SphereGeometry(1.0, 48, 48),
+    new THREE.MeshBasicMaterial({ color })
+  );
+  g.add(core);
+  for (const [scale, opacity] of [[3.2, 0.5], [5.5, 0.28], [9.0, 0.14]]) {
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: softSprite, color, transparent: true, opacity,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    }));
+    spr.scale.setScalar(scale);
+    g.add(spr);
+  }
+  return g;
+}
+const starA = makeStar(0x9fdfff);
+const starB = makeStar(0xffcf8a);
+mergerGroup.add(starA, starB);
+
+const TRAIL_SAMPLES = 220;
+const TRAIL_ARC = 3.0;
+const ANGLE_K = 40.0;
+function makeTrail(color) {
+  const geo = new THREE.BufferGeometry();
+  const positions = new Float32Array(TRAIL_SAMPLES * 3);
+  const colors = new Float32Array(TRAIL_SAMPLES * 3);
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  const mat = new THREE.LineBasicMaterial({
+    vertexColors: true, transparent: true, opacity: 0.9,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+  });
+  const line = new THREE.Line(geo, mat);
+  line.userData.baseColor = new THREE.Color(color);
+  return line;
+}
+const trailA = makeTrail(0x9fdfff);
+const trailB = makeTrail(0xffcf8a);
+mergerGroup.add(trailA, trailB);
+
+const sep = DATA.orbital_separation_km;
+const sepMax = sep[0];
+const SCALE = 9.0 / sepMax;
+function sepAtT(t) {
+  const tt = Math.max(0, Math.min(1, t));
+  const idx = tt * (sep.length - 1);
+  const i0 = Math.floor(idx), i1 = Math.min(sep.length - 1, i0 + 1);
+  const f = idx - i0;
+  return sep[i0] * (1 - f) + sep[i1] * f;
+}
+function updateTrails(tNow) {
+  const angleNow = tNow * tNow * ANGLE_K;
+  const angleStart = Math.max(0, angleNow - TRAIL_ARC);
+  const posA = trailA.geometry.attributes.position.array;
+  const posB = trailB.geometry.attributes.position.array;
+  const colA = trailA.geometry.attributes.color.array;
+  const colB = trailB.geometry.attributes.color.array;
+  const baseA = trailA.userData.baseColor, baseB = trailB.userData.baseColor;
+  for (let i = 0; i < TRAIL_SAMPLES; i++) {
+    const f = i / (TRAIL_SAMPLES - 1);
+    const a = angleStart + (angleNow - angleStart) * f;
+    const t = Math.sqrt(a / ANGLE_K);
+    const r = sepAtT(t) * SCALE / 2;
+    const cx = r * Math.cos(a), cz = r * Math.sin(a);
+    posA[i*3] = cx; posA[i*3+1] = 0; posA[i*3+2] = cz;
+    posB[i*3] = -cx; posB[i*3+1] = 0; posB[i*3+2] = -cz;
+    const fade = Math.pow(f, 1.6);
+    colA[i*3] = baseA.r*fade; colA[i*3+1] = baseA.g*fade; colA[i*3+2] = baseA.b*fade;
+    colB[i*3] = baseB.r*fade; colB[i*3+1] = baseB.g*fade; colB[i*3+2] = baseB.b*fade;
+  }
+  trailA.geometry.attributes.position.needsUpdate = true;
+  trailB.geometry.attributes.position.needsUpdate = true;
+  trailA.geometry.attributes.color.needsUpdate = true;
+  trailB.geometry.attributes.color.needsUpdate = true;
+}
+
+function buildEjecta(n, sizeBase, opacityBase, speedMin, speedMax) {
+  const geo = new THREE.BufferGeometry();
+  const posArr = new Float32Array(n * 3);
+  const vel = new Float32Array(n * 3);
+  const colorArr = new Float32Array(n * 3);
+  const goldColor = new THREE.Color(0xffc25c);
+  const blueColor = new THREE.Color(0x8fd9ff);
+  const whiteColor = new THREE.Color(0xfff6e6);
+  for (let i = 0; i < n; i++) {
+    posArr[i*3] = 0; posArr[i*3+1] = 0; posArr[i*3+2] = 0;
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+    const speed = speedMin + Math.random() * (speedMax - speedMin);
+    vel[i*3]   = speed * Math.sin(phi) * Math.cos(theta);
+    vel[i*3+1] = speed * Math.sin(phi) * Math.sin(theta) * 0.55;
+    vel[i*3+2] = speed * Math.cos(phi);
+    const roll = Math.random();
+    const c = roll < 0.5 ? goldColor : (roll < 0.85 ? whiteColor : blueColor);
+    colorArr[i*3] = c.r; colorArr[i*3+1] = c.g; colorArr[i*3+2] = c.b;
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(colorArr, 3));
+  const mat = new THREE.PointsMaterial({
+    size: sizeBase, vertexColors: true, transparent: true, opacity: 0,
+    map: fineSprite, blending: THREE.AdditiveBlending, depthWrite: false,
+  });
+  const pts = new THREE.Points(geo, mat);
+  pts.userData = { vel, baseOpacity: opacityBase };
+  return pts;
+}
+const ejectaDust = buildEjecta(26000, 0.16, 0.55, 0.3, 1.3);
+const ejectaClumps = buildEjecta(1400, 0.55, 0.85, 0.25, 1.0);
+mergerGroup.add(ejectaDust, ejectaClumps);
+
+const flash = new THREE.Sprite(new THREE.SpriteMaterial({
+  map: softSprite, color: 0xffffff, transparent: true, opacity: 0,
+  blending: THREE.AdditiveBlending, depthWrite: false,
+}));
+mergerGroup.add(flash);
+
+function updateEjecta(pts, t, spreadScale) {
+  const posAttr = pts.geometry.attributes.position;
+  const vel = pts.userData.vel;
+  const n = posAttr.count;
+  for (let i = 0; i < n; i++) {
+    const s = spreadScale * Math.pow(t, 0.85);
+    posAttr.array[i*3]   = vel[i*3]   * s;
+    posAttr.array[i*3+1] = vel[i*3+1] * s;
+    posAttr.array[i*3+2] = vel[i*3+2] * s;
+  }
+  posAttr.needsUpdate = true;
+}
+
+let lastEjectaSpread = 1.6; // carried into segment 4 so the disk starts from where ejecta left off
+
+function updateSegment3(localT) {
+  // localT: 0..1 across the whole merger segment
+  const INSPIRAL_T = 0.55, FLASH_T = 0.61;
+  let phase;
+  if (localT < INSPIRAL_T) phase = 'inspiral';
+  else if (localT < FLASH_T) phase = 'flash';
+  else phase = 'ejecta';
+
+  if (phase === 'inspiral') {
+    const t = localT / INSPIRAL_T;
+    const angle = t * t * ANGLE_K;
+    const r = sepAtT(t) * SCALE / 2;
+    starA.position.set(r * Math.cos(angle), 0, r * Math.sin(angle));
+    starB.position.set(-r * Math.cos(angle), 0, -r * Math.sin(angle));
+    starA.visible = starB.visible = true;
+    trailA.visible = trailB.visible = true;
+    updateTrails(t);
+    ejectaDust.material.opacity = 0;
+    ejectaClumps.material.opacity = 0;
+    flash.material.opacity = 0;
+  } else if (phase === 'flash') {
+    starA.visible = starB.visible = false;
+    trailA.visible = trailB.visible = false;
+    const t = (localT - INSPIRAL_T) / (FLASH_T - INSPIRAL_T);
+    flash.scale.setScalar(1.0 + t * 14.0);
+    flash.material.opacity = Math.sin(Math.min(1, t) * Math.PI) * 1.0;
+    ejectaDust.material.opacity = t * ejectaDust.userData.baseOpacity;
+    ejectaClumps.material.opacity = t * ejectaClumps.userData.baseOpacity;
+    updateEjecta(ejectaDust, Math.max(0.02, t), 1.6);
+    updateEjecta(ejectaClumps, Math.max(0.02, t), 1.6);
+    lastEjectaSpread = 1.6;
+  } else {
+    starA.visible = starB.visible = false;
+    trailA.visible = trailB.visible = false;
+    const t = (localT - FLASH_T) / (1 - FLASH_T);
+    flash.material.opacity = Math.max(0, 1 - t / 0.25);
+    flash.scale.setScalar(15.0);
+    ejectaDust.material.opacity = Math.max(0, ejectaDust.userData.baseOpacity * (1 - t * 0.55));
+    ejectaClumps.material.opacity = Math.max(0, ejectaClumps.userData.baseOpacity * (1 - t * 0.55));
+    const spread = 1.6 + t * 24.0;
+    lastEjectaSpread = spread;
+    updateEjecta(ejectaDust, 1.0, spread);
+    updateEjecta(ejectaClumps, 1.0, spread);
+  }
+}
+
+// ============================================================
+// SEGMENT 4 -- delivery to Earth: ejecta gravitationally gathers
+// into a proto-planetary disk that condenses into a young Earth
+// ============================================================
+const earthGroup = new THREE.Group();
+earthGroup.visible = false;
+scene.add(earthGroup);
+
+const N_DISK = 9000;
+const diskGeo = new THREE.BufferGeometry();
+const diskPos = new Float32Array(N_DISK * 3);
+const diskColor = new Float32Array(N_DISK * 3);
+const diskInit = new Float32Array(N_DISK * 3); // starting positions (inherited from ejecta spread)
+const diskTarget = new Float32Array(N_DISK * 3); // target ring positions on the disk
+{
+  const goldColor = new THREE.Color(0xffc25c);
+  const blueColor = new THREE.Color(0x8fd9ff);
+  const rockColor = new THREE.Color(0xd7cdb8);
+  for (let i = 0; i < N_DISK; i++) {
+    const theta0 = Math.random() * Math.PI * 2;
+    const phi0 = Math.acos(2 * Math.random() - 1);
+    const r0 = 6 + Math.random() * 22;
+    diskInit[i*3]   = r0 * Math.sin(phi0) * Math.cos(theta0);
+    diskInit[i*3+1] = r0 * Math.sin(phi0) * Math.sin(theta0) * 0.55;
+    diskInit[i*3+2] = r0 * Math.cos(phi0);
+
+    const ringR = 3 + Math.random() * 6;
+    const ringTheta = Math.random() * Math.PI * 2;
+    diskTarget[i*3]   = ringR * Math.cos(ringTheta);
+    diskTarget[i*3+1] = (Math.random() - 0.5) * 0.4;
+    diskTarget[i*3+2] = ringR * Math.sin(ringTheta);
+
+    const roll = Math.random();
+    const c = roll < 0.08 ? goldColor : (roll < 0.4 ? blueColor : rockColor);
+    diskColor[i*3] = c.r; diskColor[i*3+1] = c.g; diskColor[i*3+2] = c.b;
+  }
+  diskGeo.setAttribute('position', new THREE.BufferAttribute(diskPos, 3));
+  diskGeo.setAttribute('color', new THREE.BufferAttribute(diskColor, 3));
+}
+const diskMat = new THREE.PointsMaterial({
+  size: 0.22, vertexColors: true, transparent: true, opacity: 0,
+  map: fineSprite, blending: THREE.AdditiveBlending, depthWrite: false,
+});
+const disk = new THREE.Points(diskGeo, diskMat);
+earthGroup.add(disk);
+
+const earthCore = new THREE.Mesh(
+  new THREE.SphereGeometry(1.0, 64, 64),
+  new THREE.MeshBasicMaterial({ color: 0x2f6f8f, transparent: true, opacity: 0 })
+);
+earthGroup.add(earthCore);
+const earthGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+  map: softSprite, color: 0x6fb6d9, transparent: true, opacity: 0,
+  blending: THREE.AdditiveBlending, depthWrite: false,
+}));
+earthGlow.scale.setScalar(4.0);
+earthGroup.add(earthGlow);
+
+function updateSegment4(t) {
+  const gather = Math.min(1, t / 0.6);           // disk spirals inward and settles
+  const grow = Math.max(0, Math.min(1, (t - 0.45) / 0.55)); // earth condenses out of it
+  const ease = 1 - Math.pow(1 - gather, 3);
+
+  const posAttr = disk.geometry.attributes.position;
+  for (let i = 0; i < N_DISK; i++) {
+    const ix = diskInit[i*3], iy = diskInit[i*3+1], iz = diskInit[i*3+2];
+    const tx = diskTarget[i*3], ty = diskTarget[i*3+1], tz = diskTarget[i*3+2];
+    const spin = ease * 3.2;
+    const cosA = Math.cos(spin), sinA = Math.sin(spin);
+    const cx = ix * (1 - ease) + tx * ease;
+    const cz = iz * (1 - ease) + tz * ease;
+    posAttr.array[i*3]   = cx * cosA - cz * sinA;
+    posAttr.array[i*3+1] = iy * (1 - ease) + ty * ease;
+    posAttr.array[i*3+2] = cx * sinA + cz * cosA;
+  }
+  posAttr.needsUpdate = true;
+  disk.material.opacity = Math.min(1, t * 4) * 0.85 * (1 - grow * 0.7);
+
+  earthCore.material.opacity = grow;
+  earthCore.scale.setScalar(0.3 + grow * 1.4);
+  earthCore.rotation.y = t * 2.0;
+  earthGlow.material.opacity = grow * 0.7;
+  earthGlow.scale.setScalar(2.5 + grow * 3.5);
+}
+
+// ============================================================
+// SEGMENT 5 -- closing: pull back on a young, gold-bearing world
+// ============================================================
+function updateSegment5(t) {
+  earthCore.material.opacity = 1;
+  earthGlow.material.opacity = 0.7;
+  disk.material.opacity = Math.max(0, 0.25 * (1 - t));
+}
+
+// ============================================================
+// master timeline
+// ============================================================
+const SEGMENTS = [
+  { name: 'elements',  start: 0.00, end: 0.13 },
+  { name: 'binding',   start: 0.13, end: 0.28 },
+  { name: 'merger',    start: 0.28, end: 0.70 },
+  { name: 'earth',     start: 0.70, end: 0.88 },
+  { name: 'closing',   start: 0.88, end: 1.00 },
+];
+
+const CAPTIONS = [
+  { start: 0.00, end: 0.12, text: 'Every element around you was forged somewhere in the universe’s past.' },
+  { start: 0.14, end: 0.27, text: 'Fusion can only build nuclei up to iron — past that peak, it costs energy instead of releasing it.' },
+  { start: 0.29, end: 0.42, text: 'On August 17, 2017, two neutron stars spiraled into each other 130 million light-years away.' },
+  { start: 0.43, end: 0.58, text: 'In the merger’s neutron-rich debris, nuclei capture neutrons faster than they can decay.' },
+  { start: 0.60, end: 0.69, text: 'Within a second, the ejecta freezes out and decays down to stable, heavy elements — gold among them.' },
+  { start: 0.71, end: 0.85, text: 'That enriched material drifts for eons, then falls together into new stars and worlds.' },
+  { start: 0.89, end: 0.99, text: 'Every gram of gold on Earth was forged in a moment like this, long before the Sun existed.' },
+];
+
+function fadeWindow(t, start, end, fadeFrac) {
+  const dur = end - start;
+  const local = (t - start) / dur;
+  if (local < 0 || local > 1) return 0;
+  const f = Math.min(1, fadeFrac);
+  if (local < f) return local / f;
+  if (local > 1 - f) return (1 - local) / f;
+  return 1;
+}
+
+window.__renderFrame = function(frameIdx, totalFrames) {
+  const T = frameIdx / (totalFrames - 1);
+
+  const EDGE = 0.02;
+  elemGroup.visible = T < SEGMENTS[0].end + EDGE;
+  landscapeGroup.visible = T > SEGMENTS[1].start - EDGE && T < SEGMENTS[1].end + EDGE;
+  mergerGroup.visible = T > SEGMENTS[2].start - EDGE && T < SEGMENTS[2].end + EDGE;
+  earthGroup.visible = T > SEGMENTS[3].start - EDGE;
+
+  const clamp01 = (x) => Math.max(0, Math.min(1, x));
+
+  if (elemGroup.visible) {
+    updateSegment1(clamp01(T / SEGMENTS[0].end));
+  }
+  if (landscapeGroup.visible) {
+    updateSegment2(clamp01((T - SEGMENTS[1].start) / (SEGMENTS[1].end - SEGMENTS[1].start)));
+  }
+  if (mergerGroup.visible) {
+    updateSegment3(clamp01((T - SEGMENTS[2].start) / (SEGMENTS[2].end - SEGMENTS[2].start)));
+  }
+  if (T > SEGMENTS[3].start && T <= SEGMENTS[3].end) {
+    updateSegment4((T - SEGMENTS[3].start) / (SEGMENTS[3].end - SEGMENTS[3].start));
+  }
+  if (T > SEGMENTS[4].start) {
+    updateSegment5((T - SEGMENTS[4].start) / (SEGMENTS[4].end - SEGMENTS[4].start));
+  }
+
+  // continuous slow cinematic camera drift across the whole film --
+  // no hard cuts in framing, only in content, so it never reads as
+  // "Act 1 / Act 2" chapter breaks.
+  const camAngle = T * Math.PI * 1.5 - 0.4;
+  let lookAt = new THREE.Vector3(0, 0, 0);
+  if (T < SEGMENTS[0].end) {
+    // elements gathering
+    const camR = 34 - (T / SEGMENTS[0].end) * 6, camY = 10;
+    camera.position.set(camR * Math.sin(camAngle), camY, camR * Math.cos(camAngle));
+  } else if (T < SEGMENTS[1].end) {
+    // binding-energy ridge flyover -- fixed dolly well outside the mesh's
+    // own bounding volume so it never clips through the terrain
+    const mt = (T - SEGMENTS[1].start) / (SEGMENTS[1].end - SEGMENTS[1].start);
+    const camX = -48 + mt * 85;
+    const groundHere = terrainHeightAt(camX);
+    const groundAhead = terrainHeightAt(camX + 22);
+    camera.position.set(camX, groundHere + 13, 34);
+    lookAt.set(camX + 22, groundAhead + 2, 0);
+  } else if (T < SEGMENTS[2].end) {
+    const mt = (T - SEGMENTS[2].start) / (SEGMENTS[2].end - SEGMENTS[2].start);
+    const camR = 26 - (mt > 0.55 ? 6 : 0) - mt * 4, camY = 12 + Math.sin(frameIdx*0.01)*1.5;
+    camera.position.set(camR * Math.sin(camAngle), camY, camR * Math.cos(camAngle));
+  } else {
+    const et = (T - SEGMENTS[3].start) / (1 - SEGMENTS[3].start);
+    const camR = 18 - et * 6, camY = 8 - et * 3;
+    camera.position.set(camR * Math.sin(camAngle), camY, camR * Math.cos(camAngle));
+  }
+  camera.lookAt(lookAt);
+
+  // captions -- plain narrative lines, not section headers
+  let capOpacity = 0, capText = '';
+  for (const c of CAPTIONS) {
+    const o = fadeWindow(T, c.start, c.end, 0.18);
+    if (o > capOpacity) { capOpacity = o; capText = c.text; }
+  }
+  captionEl.textContent = capText;
+  captionEl.style.opacity = capOpacity.toFixed(3);
+
+  // brief dips-to-black at each segment boundary for a deliberate cinematic
+  // transition instead of a hard visual cut
+  let fadeOpacity = 0;
+  const boundaries = [SEGMENTS[1].start, SEGMENTS[2].start, SEGMENTS[3].start, SEGMENTS[4].start];
+  for (const b of boundaries) {
+    const d = Math.abs(T - b);
+    const halfWidth = 0.012;
+    if (d < halfWidth) fadeOpacity = Math.max(fadeOpacity, 1 - d / halfWidth);
+  }
+  // overall opening/closing fade
+  fadeOpacity = Math.max(fadeOpacity, 1 - Math.min(1, T / 0.015));
+  fadeOpacity = Math.max(fadeOpacity, 1 - Math.min(1, (1 - T) / 0.02));
+  fadeEl.style.opacity = fadeOpacity.toFixed(3);
+
+  composer.render();
+};
+
+window.__ready = true;
+</script>
+</body>
+</html>
